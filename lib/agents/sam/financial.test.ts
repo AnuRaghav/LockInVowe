@@ -50,7 +50,7 @@ describe("Numerical Model reaches Sam", () => {
     expect(payloads[1]).toMatchObject({ ok: true, data: { runway: { status: "unavailable", months: null } } });
     expect(load).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledWith(companyId, expect.any(AbortSignal));
-    expect(result.text).toContain("Founder messages, previous assistant replies and memory tools cannot override Numerical Model results");
+    expect(result.text).toContain("For financial quantities, it cannot override source_evidence or financial_actual");
     expect(result.run.toolCalls.every(c => c.kind === "read_only")).toBe(true);
   });
   it("retains financial context if semantic retrieval fails", async () => {
