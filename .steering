@@ -1,0 +1,153 @@
+# LockInVowe Project Steering
+
+This file is a manifest of all project context and steering documents. All developers should read these to understand the project.
+
+## 📚 Essential Reading (in order)
+
+### 1. `.claude/project-context/README.md`
+**Start here** — Quick navigation guide for the project context.
+- Orientation for new team members
+- Points to the right docs for your role
+- 2-minute read
+
+### 2. `.claude/project-context/PROJECT_OVERVIEW.md`
+**What we're building** — Full product vision and architecture.
+- Product goal and differentiation
+- Core architecture (data → model → forecasting → agent)
+- MVP scope (answer 3 questions well)
+- Tech stack
+- 10-minute read
+
+### 3. `.claude/project-context/ROADMAP.md`
+**The plan** — Phased development, decisions made, metrics.
+- Phase 1 (MVP): Answer 3 questions well
+- Phase 2 (Learning): Improve over time
+- Phase 3-4: Future features
+- All decisions with rationale
+- Open questions for team discussion
+- 10-minute read
+
+### 4. `.claude/project-context/DEVELOPMENT_GUIDE.md`
+**How to code** — Technical how-tos, patterns, and debugging.
+- Local setup and git workflow
+- Database management
+- API and routing patterns
+- Code organization
+- Common tasks
+- Reference as needed
+
+---
+
+## 🎯 What Each Role Should Read
+
+**Building data connectors?**
+→ PROJECT_OVERVIEW.md (section: "Data Connectors")
+→ ROADMAP.md (section: "Phase 1.1")
+→ DEVELOPMENT_GUIDE.md (section: "Database")
+
+**Building the financial model?**
+→ PROJECT_OVERVIEW.md (section: "Persistent Company Financial Model")
+→ ROADMAP.md (section: "Phase 1.2")
+
+**Building the forecasting engine?**
+→ PROJECT_OVERVIEW.md (section: "Deterministic Forecasting Engine")
+→ ROADMAP.md (section: "Phase 1.3")
+→ DEVELOPMENT_GUIDE.md (section: "Key Concepts")
+
+**Building the LLM agent?**
+→ PROJECT_OVERVIEW.md (section: "AI Financial Agent")
+→ ROADMAP.md (section: "Phase 1.4")
+
+**Building the UI?**
+→ PROJECT_OVERVIEW.md (section: "MVP")
+→ DEVELOPMENT_GUIDE.md (section: "Code Organization")
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# Clone repo
+git clone https://github.com/DanielEnriq/LockInVowe.git
+cd LockInVowe
+
+# Install dependencies
+npm install
+
+# Set up local env
+vercel env pull .env.local --yes
+
+# Run development server
+npm run dev
+
+# Open browser
+http://localhost:3000
+```
+
+---
+
+## 📋 What's Ready
+
+✅ Repo and Vercel deployment
+✅ Supabase database
+✅ Environment variables (all 3 environments)
+✅ Project context (this document + .claude/project-context/)
+✅ Local development setup
+
+❌ Data connectors (Phase 1.1)
+❌ Database schema (Phase 1.1)
+❌ Financial model (Phase 1.2)
+❌ Forecasting engine (Phase 1.3)
+❌ LLM agent (Phase 1.4)
+❌ UI (Phase 1.5)
+
+---
+
+## 🔑 Key Concepts (TL;DR)
+
+**Moat**: The accumulated financial intelligence layer (company model, historical assumptions, forecast accuracy, decision history), not the technology.
+
+**Forecasting**: Happens in code (deterministic functions), not in the LLM. The LLM interprets results.
+
+**Persistent Model**: Company assumptions are stored in the database and updated continuously. This is built during onboarding.
+
+**MVP**: Answer 3 questions really well:
+1. What is my runway?
+2. Can I afford this hire?
+3. What happens under different scenarios?
+
+---
+
+## 📞 Questions?
+
+1. Check the relevant doc (start with README.md)
+2. Search ROADMAP.md for "Open Questions"
+3. Ask the team
+
+---
+
+## 📅 Document Status
+
+Last Updated: September 12, 2026
+Phase: Foundation (MVP development starting)
+
+Docs are living documents. Update them as the project evolves.
+
+---
+
+## Files Included
+
+```
+.claude/project-context/
+├── README.md                    (navigation guide)
+├── PROJECT_OVERVIEW.md          (product vision & architecture)
+├── DEVELOPMENT_GUIDE.md         (technical how-tos)
+├── ROADMAP.md                   (phased plan & decisions)
+└── [this .steering file]
+```
+
+All files are checked into git so all developers have the same context.
+
+---
+
+**Welcome to LockInVowe. Read the docs. Build something great. 🚀**
