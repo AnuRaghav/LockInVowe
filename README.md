@@ -8,7 +8,6 @@ An AI agent that helps startup founders delegate financial and operational tasks
 - **Styling**: Tailwind CSS
 - **Database**: Supabase (PostgreSQL)
 - **LLM**: Vercel AI SDK (chat endpoint) + LangChain (`@langchain/anthropic`) for the Sam agent
-- **Voice**: ElevenLabs (optional)
 - **Deploy**: Vercel
 
 ## Quick Start
@@ -142,8 +141,8 @@ deterministic domain code (lib/finance/) → Supabase
 
 `lib/agents/sam/tools/calculate-runway.ts` is the reference implementation.
 
-Voice is optional: `speak(text)` in `lib/agents/sam/voice.ts` returns an audio
-stream when ElevenLabs credentials are set, and `null` otherwise.
+Sam uses text conversations with streaming answers and inline charts. No microphone
+access or audio provider credentials are required.
 
 ## Project Structure
 

@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { List, SidebarSimple } from "@phosphor-icons/react";
 
-import { VoicePlaybackProvider, useVoicePlayback } from "@/components/chat/VoicePlayback";
-import { ChartFigure } from "@/components/chat/ChartFigure";
 import { Composer } from "@/components/chat/Composer";
 import { EmptyConversation, MessageList, type ChatNotice, type RunView } from "@/components/chat/MessageList";
 import { ThreadSidebar, threadLabel } from "@/components/chat/ThreadSidebar";
@@ -109,12 +107,7 @@ const requestNotice = (error: unknown): ChatNotice => {
  * entirely through the backend; nothing about it is assembled, cached, or
  * second-guessed here.
  */
-export function ChatWorkspace(props: { initialThreadId?: string }) {
-  return <VoicePlaybackProvider><ChatWorkspaceContent {...props} /></VoicePlaybackProvider>;
-}
-
-function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string }) {
-  const { playback, play: playVoice, stop: stopPlayback } = useVoicePlayback();
+export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string }) {
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -134,8 +127,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
   const [notice, setNotice] = useState<ChatNotice | null>(null);
   /** Activity summaries for answers produced in this session, by message id. */
   const [summaries, setSummaries] = useState<Record<string, string>>({});
-  /** The assistant answer currently being presented in the desktop voice stage. */
-  const [voiceStageMessageId, setVoiceStageMessageId] = useState<string | null>(null);
 
   const runAbort = useRef<AbortController | null>(null);
   /** The thread a live run owns; its own reconciliation reads it, not the loader. */
@@ -225,8 +216,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
 
   const select = (threadId: string) => {
     if (threadId === activeThreadId || run) return;
-    stopPlayback();
-    setVoiceStageMessageId(null);
     setNotice(null);
     setSummaries({});
     stickToBottom.current = true;
@@ -236,8 +225,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
 
   const startNewThread = useCallback(async () => {
     if (runAbort.current) return;
-    stopPlayback();
-    setVoiceStageMessageId(null);
     setCreating(true);
     setNotice(null);
     try {
@@ -252,7 +239,7 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
     } finally {
       setCreating(false);
     }
-  }, [stopPlayback]);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -289,8 +276,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
       await deleteThread(threadId);
       setThreads((current) => current.filter((thread) => thread.id !== threadId));
       if (threadId === activeThreadId) {
-        stopPlayback();
-        setVoiceStageMessageId(null);
         setSummaries({});
         setNotice(null);
         setActiveThreadId(null);
@@ -305,9 +290,8 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
     runAbort.current?.abort();
   };
 
-  const send = async (content: string, options: { speakAnswer?: boolean } = {}) => {
-    if (run) return;
-    stopPlayback();
+  const send = async (content: string) => {
+    if (run || runAbort.current) return;
     const controller = new AbortController();
     runAbort.current = controller;
     stopped.current = false;
@@ -385,7 +369,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
       setRun((current) => (current ? { ...current, phase: "settling", text: "" } : current));
     }
 
-    runAbort.current = null;
     if (!mounted.current) return;
 
     const summary = summarizeActivity(steps);
@@ -398,10 +381,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
         const answered = [...persisted].reverse().find((message) => message.role === "assistant");
         if (outcome === "completed" && answered) {
           if (summary) setSummaries((current) => ({ ...current, [answered.id]: summary }));
-          if (options.speakAnswer) {
-            setVoiceStageMessageId(answered.id);
-            playVoice(answered.threadId, answered.id);
-          }
         }
       } catch {
         if (!mounted.current) return;
@@ -426,6 +405,7 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
       setMessages((current) => current.filter((message) => !message.id.startsWith("pending-")));
     }
 
+    runAbort.current = null;
     runThread.current = null;
     setRun(null);
     setNotice(terminal);
@@ -433,18 +413,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? null;
   const hasConversation = messages.length > 0 || run !== null || notice !== null;
-  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant") ?? null;
-  const presentingVoiceAnswer = Boolean(
-    voiceStageMessageId &&
-    playback?.messageId === voiceStageMessageId &&
-    latestAssistant?.id === voiceStageMessageId,
-  );
-  const useHeroVoice = (messages.length === 0 && notice === null) || presentingVoiceAnswer;
-  const voiceCompanion = presentingVoiceAnswer && latestAssistant?.charts?.length ? (
-    <div className="flex flex-col gap-4 text-left">
-      {latestAssistant.charts.map((chart) => <ChartFigure key={chart.id} spec={chart.spec} />)}
-    </div>
-  ) : null;
 
   return (
     <div className="flex h-dvh w-full overflow-hidden">
@@ -503,53 +471,21 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
               Loading conversation…
             </p>
           ) : hasConversation ? (
-            useHeroVoice ? (
-              <EmptyConversation
-                run={run}
-                companion={voiceCompanion}
-                voiceControl={
-                  <Composer
-                    onSend={(content) => void send(content, { speakAnswer: true })}
-                    onStop={stop}
-                    running={run !== null}
-                    disabled={messagesLoading}
-                    focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}:hero`}
-                    variant="hero"
-                  />
-                }
-              />
-            ) : (
-              <MessageList messages={messages} summaries={summaries} run={run} notice={notice} />
-            )
+            <MessageList messages={messages} summaries={summaries} run={run} notice={notice} />
           ) : (
-            <EmptyConversation
-              run={run}
-              companion={voiceCompanion}
-              voiceControl={
-                <Composer
-                  onSend={(content) => void send(content, { speakAnswer: true })}
-                  onStop={stop}
-                  running={run !== null}
-                  disabled={messagesLoading}
-                  focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}:hero`}
-                  variant="hero"
-                />
-              }
-            />
+            <EmptyConversation onAsk={send} disabled={messagesLoading} />
           )}
         </div>
 
-        {!useHeroVoice && (
-          <div className="flex-none border-t border-border pt-4">
-            <Composer
-              onSend={(content) => void send(content, { speakAnswer: true })}
-              onStop={stop}
-              running={run !== null}
-              disabled={messagesLoading}
-              focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}`}
-            />
-          </div>
-        )}
+        <div className="flex-none border-t border-border pt-4">
+          <Composer
+            onSend={send}
+            onStop={stop}
+            running={run !== null}
+            disabled={messagesLoading}
+            focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}`}
+          />
+        </div>
       </main>
     </div>
   );

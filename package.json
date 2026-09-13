@@ -22,7 +22,6 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^0.0.50",
-    "@elevenlabs/elevenlabs-js": "^2.68.0",
     "@langchain/anthropic": "^1.5.10",
     "@langchain/core": "^1.2.11",
     "@phosphor-icons/react": "^2.1.10",
