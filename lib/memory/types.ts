@@ -155,6 +155,66 @@ export const supportsMemoryHistory = (
   typeof (memory as Partial<MemoryHistory>).history === "function";
 
 /**
+ * One line of the table of contents.
+ *
+ * Everything here exists to answer "is this topic worth opening?" and nothing
+ * answers "what does it say?" - that is deliberately {@link PersistentMemory.get}'s
+ * job. `summary` is a label for the topic, never a compressed substitute for
+ * its content, because a summary good enough to answer from is a summary that
+ * will be answered from.
+ */
+export interface MemoryDirectoryEntry {
+  /** The id {@link PersistentMemory.get} takes. What the model quotes back. */
+  id: string;
+  /** A few words naming the topic. */
+  title: string;
+  /** One line on what this topic covers. Absent when the backend has none. */
+  summary?: string;
+  /** Only when it changes how the line reads - a dormant topic is not a live one. */
+  status?: string;
+  /** The date the understanding is *about*, so a stale plan is visible as stale. */
+  asOf?: string;
+  /** How load-bearing this is for the company, 0-1, when the backend tracks it. */
+  importance?: number;
+}
+
+/**
+ * What a company currently has topics about.
+ *
+ * `truncated` is part of the contract rather than an implementation detail: a
+ * directory that silently dropped entries would recreate the exact problem it
+ * exists to solve - a caller believing it has seen everything there is.
+ */
+export interface MemoryDirectory {
+  entries: MemoryDirectoryEntry[];
+  /** True when the cap was reached and current topics went unlisted. */
+  truncated: boolean;
+}
+
+/**
+ * The other optional half: knowing *what topics exist* without reading them.
+ *
+ * Separate from {@link PersistentMemory.search} on purpose. Search answers "what
+ * is relevant to this question?", and is only as good as the question's wording.
+ * This answers "what does this company have opinions about at all?", which is
+ * what a caller needs before it can decide the question's wording was wrong.
+ *
+ * Optional for the same reason as {@link MemoryHistory}: a backend that cannot
+ * enumerate cheaply should say so rather than answer slowly. Use
+ * {@link supportsMemoryDirectory}.
+ */
+export interface MemoryDirectoryReader {
+  /** Current topics, most load-bearing first. Never superseded ones. */
+  list(scope: MemoryScope, options?: { limit?: number }): Promise<MemoryDirectory>;
+}
+
+/** Whether this memory can answer "what topics exist?". */
+export const supportsMemoryDirectory = (
+  memory: PersistentMemory
+): memory is PersistentMemory & MemoryDirectoryReader =>
+  typeof (memory as Partial<MemoryDirectoryReader>).list === "function";
+
+/**
  * Working state for the conversation currently in progress.
  *
  * Deliberately thin. This is scratch space for one thread - the founder's

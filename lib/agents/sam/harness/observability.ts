@@ -76,7 +76,20 @@ export interface SamContextBudget {
    * conversation starts climbing, this is the number that shows it.
    */
   briefChars: number;
-  memoryCount: number;
+  /**
+   * Topics listed in the company-knowledge directory.
+   *
+   * The count, never the topics. Answers "did Sam know this company had
+   * opinions, and how many?" when reading a run back.
+   */
+  directoryEntryCount: number;
+  /** True when current topics went unlisted, so the directory was incomplete. */
+  directoryTruncated: boolean;
+  /** `available`, `empty`, or `unavailable`. Whether a stated plan reached the run. */
+  companyPlanStatus: string;
+  transcriptMessageCount: number;
+  /** Characters the replayed conversation contributes. The unbounded component. */
+  transcriptChars: number;
   threadNoteCount: number;
   /** Rough, provider-independent estimate: characters / 4. */
   estimatedTokens: number;
@@ -141,6 +154,10 @@ export const createStructuredLogger = (
           usage: run.usage,
           failures: run.failures.length,
           contextChars: run.contextBudget?.systemPromptChars,
+          transcriptChars: run.contextBudget?.transcriptChars,
+          directoryEntries: run.contextBudget?.directoryEntryCount,
+          directoryTruncated: run.contextBudget?.directoryTruncated,
+          companyPlan: run.contextBudget?.companyPlanStatus,
           outcome: run.outcome,
           degraded: run.degraded,
         })
@@ -260,7 +277,8 @@ export class SamRunRecorder {
   contextBuilt(budget: SamContextBudget): void {
     this.record.contextBudget = budget;
     this.emit("context_built", {
-      memoryCount: budget.memoryCount,
+      directoryEntryCount: budget.directoryEntryCount,
+      companyPlanStatus: budget.companyPlanStatus,
       threadNoteCount: budget.threadNoteCount,
       budget,
     });

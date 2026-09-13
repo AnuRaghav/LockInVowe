@@ -2,19 +2,22 @@ import { describe, expect, it } from "vitest";
 
 import { createSamContextBuilder } from "@/lib/agents/sam/context-builder";
 import { buildSamSystemPrompt } from "@/lib/agents/sam/prompt";
-import { InMemoryThreadMemory } from "@/lib/memory/in-memory";
+import { InMemoryPersistentMemory, InMemoryThreadMemory } from "@/lib/memory/in-memory";
 import { createSeededPersistentMemory } from "@/lib/memory/seed";
+import type { MemoryRecord } from "@/lib/memory/types";
 
 const COMPANY_ID = "company_test_1";
 
 /**
- * No brief by default.
+ * No brief and no stored plan by default.
  *
- * These cases are about selection and thread scoping, and `loadBrief` is
+ * These cases are about the directory and thread scoping, and both loaders are
  * injected so none of them reach for a database. The brief's own behaviour is
- * covered in `lib/semantic/brief/brief.test.ts` and in the end-to-end flow.
+ * covered in `lib/semantic/brief/brief.test.ts`, and the plan projection in
+ * `lib/company/operating.test.ts`.
  */
 const noBrief = async () => null;
+const noOperating = async () => null;
 
 const builder = (threadMemory = new InMemoryThreadMemory()) => ({
   threadMemory,
@@ -22,28 +25,60 @@ const builder = (threadMemory = new InMemoryThreadMemory()) => ({
     persistentMemory: createSeededPersistentMemory(COMPANY_ID),
     threadMemory,
     loadBrief: noBrief,
+    loadOperating: noOperating,
   }),
 });
 
-describe("SamContextBuilder", () => {
-  it("opens a brand-new conversation with relevant company memory", async () => {
+describe("SamContextBuilder: the company-knowledge directory", () => {
+  it("opens a turn knowing every topic exists, whatever the question was about", async () => {
     const { contextBuilder } = builder();
 
     const context = await contextBuilder.build({
       runtime: { companyId: COMPANY_ID, threadId: "thread_new" },
-      request: "Can we afford to hire a senior engineer?",
+      // A question with no lexical overlap with the fundraising topic at all.
+      request: "How much cash do we have?",
     });
 
-    expect(context.thread).toBeNull();
-    expect(context.memories.map((memory) => memory.id)).toContain("mem_senior_engineer");
-    expect(context.memories.map((memory) => memory.id)).toContain("mem_runway_floor");
+    const ids = context.directory?.entries.map((entry) => entry.id) ?? [];
+
+    // This is the whole point: the raise plan is discoverable even though
+    // nothing in the question would have matched it. Under the previous
+    // top-3-lexical-search context it would have been invisible.
+    expect(ids).toContain("mem_raise_march");
+    expect(ids).toContain("mem_runway_floor");
+    expect(ids).toContain("mem_senior_engineer");
+    expect(context.directory?.truncated).toBe(false);
   });
 
-  it("keeps the selection small rather than dumping everything known", async () => {
+  it("lists a topic as an addressable id, not as a body", async () => {
+    const { contextBuilder } = builder();
+
+    const context = await contextBuilder.build({
+      runtime: { companyId: COMPANY_ID },
+      request: "What's our runway?",
+    });
+
+    const entry = context.directory?.entries.find((item) => item.id === "mem_runway_floor");
+
+    // `id` is the argument get_memory takes - that is what makes the topic
+    // reachable, and it is the reason the directory exists.
+    expect(entry).toMatchObject({
+      id: "mem_runway_floor",
+      title: expect.any(String),
+      importance: 0.9,
+    });
+    // Bodies being withheld is a property of the real semantic store, where a
+    // block has a title and a body to keep apart; the seeded dev stub holds
+    // single-sentence records with nothing to withhold. See
+    // `lib/semantic/memory-adapter.test.ts`.
+  });
+
+  it("says so when the directory is clipped rather than silently dropping topics", async () => {
     const contextBuilder = createSamContextBuilder({
       persistentMemory: createSeededPersistentMemory(COMPANY_ID),
-      maxMemories: 1,
+      maxDirectoryEntries: 2,
       loadBrief: noBrief,
+      loadOperating: noOperating,
     });
 
     const context = await contextBuilder.build({
@@ -51,10 +86,12 @@ describe("SamContextBuilder", () => {
       request: "When are we raising?",
     });
 
-    expect(context.memories.map((memory) => memory.id)).toEqual(["mem_raise_march"]);
+    expect(context.directory?.entries).toHaveLength(2);
+    expect(context.directory?.truncated).toBe(true);
+    expect(buildSamSystemPrompt(context)).toContain("use search_memory");
   });
 
-  it("returns nothing for a company with no memories", async () => {
+  it("is company-scoped", async () => {
     const { contextBuilder } = builder();
 
     const context = await contextBuilder.build({
@@ -62,10 +99,35 @@ describe("SamContextBuilder", () => {
       request: "What's our runway?",
     });
 
-    expect(context.memories).toEqual([]);
+    expect(context.directory?.entries).toEqual([]);
   });
 
-  it("carries company memory across threads while thread state stays local", async () => {
+  it("falls back to search when the backend cannot enumerate topics", async () => {
+    const record: MemoryRecord = {
+      id: "mem_1",
+      kind: "plan",
+      content: "We plan to raise in March.",
+    };
+    // A PersistentMemory with no `list` - the boundary's optional capability.
+    const listless = {
+      search: async () => [record],
+      get: async () => record,
+    };
+
+    const context = await createSamContextBuilder({
+      persistentMemory: listless,
+      loadBrief: noBrief,
+      loadOperating: noOperating,
+    }).build({ runtime: { companyId: COMPANY_ID }, request: "When are we raising?" });
+
+    expect(context.directory).toBeNull();
+    // The section is simply absent; nothing invents an empty directory.
+    expect(buildSamSystemPrompt(context)).not.toContain("COMPANY KNOWLEDGE DIRECTORY");
+  });
+});
+
+describe("SamContextBuilder: thread scoping", () => {
+  it("carries company knowledge across threads while thread state stays local", async () => {
     const { threadMemory, contextBuilder } = builder();
     const first = { companyId: COMPANY_ID, threadId: "thread_a" };
     const second = { companyId: COMPANY_ID, threadId: "thread_b" };
@@ -81,11 +143,11 @@ describe("SamContextBuilder", () => {
       request: "When are we raising?",
     });
 
-    // The company fact is reachable from either conversation...
+    // The company topic is reachable from either conversation...
     const raisePlan = (context: typeof firstContext) =>
-      context.memories.find((memory) => memory.id === "mem_raise_march");
-    expect(raisePlan(firstContext)?.content).toContain("March");
-    expect(raisePlan(secondContext)?.content).toContain("March");
+      context.directory?.entries.find((entry) => entry.id === "mem_raise_march");
+    expect(raisePlan(firstContext)).toBeDefined();
+    expect(raisePlan(secondContext)).toBeDefined();
 
     // ...while the working note belongs to the thread that wrote it.
     expect(firstContext.thread?.notes).toEqual([
@@ -99,20 +161,17 @@ describe("SamContextBuilder", () => {
     const runtime = { companyId: COMPANY_ID, threadId: "thread_a" };
     await threadMemory.appendNote(runtime, "Founder wants a hiring answer today.");
 
-    const context = await contextBuilder.build({
-      runtime,
-      request: "When are we raising?",
-    });
+    const context = await contextBuilder.build({ runtime, request: "When are we raising?" });
     const prompt = buildSamSystemPrompt(context);
 
-    expect(prompt).toContain("The company plans to raise a Series A in March.");
+    expect(prompt).toContain("mem_raise_march");
     expect(prompt).toContain("Founder wants a hiring answer today.");
     // The context itself stays structured - formatting happens here, not upstream.
-    expect(context.memories[0]).toMatchObject({ id: expect.any(String), kind: "plan" });
+    expect(context.directory?.entries[0]).toMatchObject({ id: expect.any(String) });
   });
 });
 
-describe("SamContextBuilder and the company brief", () => {
+describe("SamContextBuilder: the brief and the stated plan", () => {
   const brief = {
     id: "brief_1",
     version: 3,
@@ -128,6 +187,7 @@ describe("SamContextBuilder and the company brief", () => {
     const contextBuilder = createSamContextBuilder({
       persistentMemory: createSeededPersistentMemory(COMPANY_ID),
       loadBrief: async () => brief,
+      loadOperating: noOperating,
     });
 
     const context = await contextBuilder.build({
@@ -138,35 +198,66 @@ describe("SamContextBuilder and the company brief", () => {
     expect(context.brief?.version).toBe(3);
 
     const prompt = buildSamSystemPrompt(context);
-    expect(prompt).toContain("Company brief");
+    expect(prompt).toContain("COMPANY BRIEF");
     expect(prompt).toContain("frozen until the Series A closes");
   });
 
-  it("keeps the brief apart from the topics selected for this question", async () => {
+  it("keeps the standing brief, the directory and the plan as separate labelled sections", async () => {
     const contextBuilder = createSamContextBuilder({
       persistentMemory: createSeededPersistentMemory(COMPANY_ID),
       loadBrief: async () => brief,
+      loadOperating: async () => ({
+        status: "available" as const,
+        class: "management_context" as const,
+        runwayFloorMonths: 12,
+        monthlyGrowthTargetPct: 7,
+        mrr: null,
+        monthlyExpenses: null,
+        statedMonthlyPayrollCost: null,
+        plannedHires: {
+          count: 2,
+          totalMonthlyCost: "USD 34166.00",
+          earliestStartDate: "2026-11-01",
+        },
+        team: { headcount: 9 },
+        payroll: {
+          connected: true,
+          activeEmployeeCount: 9,
+          lastProcessedRunEmployerCost: "USD 98000.00",
+          lastSyncedAt: "2026-09-12T00:00:00Z",
+        },
+        missingFields: [],
+        more: "Use get_company_plan for detail.",
+      }),
     });
 
     const prompt = buildSamSystemPrompt(
       await contextBuilder.build({
         runtime: { companyId: COMPANY_ID },
-        request: "When are we raising?",
+        request: "Can we afford the hires?",
       })
     );
 
-    // Two labelled sections, doing different jobs. A model that cannot tell
-    // standing context from question-specific context cannot weigh them.
-    const briefAt = prompt.indexOf("Company brief");
-    const relevantAt = prompt.indexOf("Relevant to this question");
-    expect(briefAt).toBeGreaterThan(-1);
-    expect(relevantAt).toBeGreaterThan(briefAt);
+    // Four sections doing four different jobs, in orientation order. A model
+    // that cannot tell observed state from standing context from an index from
+    // a stated plan cannot weigh them.
+    const at = (heading: string) => prompt.indexOf(heading);
+    expect(at("NUMERICAL MODEL")).toBeGreaterThan(-1);
+    expect(at("COMPANY BRIEF")).toBeGreaterThan(at("NUMERICAL MODEL"));
+    expect(at("COMPANY KNOWLEDGE DIRECTORY")).toBeGreaterThan(at("COMPANY BRIEF"));
+    expect(at("COMPANY PLAN")).toBeGreaterThan(at("COMPANY KNOWLEDGE DIRECTORY"));
+
+    // The plan headline carries the constraint and the cost, so "can we afford
+    // the planned hires?" is answerable without a lucky search first.
+    expect(prompt).toContain('"runwayFloorMonths":12');
+    expect(prompt).toContain("USD 34166.00");
   });
 
-  it("still opens the turn when the brief cannot be loaded", async () => {
+  it("still opens the turn when the brief and the plan cannot be loaded", async () => {
     const contextBuilder = createSamContextBuilder({
       persistentMemory: createSeededPersistentMemory(COMPANY_ID),
       loadBrief: async () => null,
+      loadOperating: async () => null,
     });
 
     const context = await contextBuilder.build({
@@ -175,6 +266,31 @@ describe("SamContextBuilder and the company brief", () => {
     });
 
     expect(context.brief).toBeNull();
-    expect(context.memories.length).toBeGreaterThan(0);
+    expect(context.operating).toBeNull();
+    // The directory is independent of both, so discovery survives.
+    expect(context.directory?.entries.length).toBeGreaterThan(0);
+  });
+});
+
+describe("InMemoryPersistentMemory directory", () => {
+  it("orders by importance and reports truncation", async () => {
+    const memory = new InMemoryPersistentMemory({
+      [COMPANY_ID]: [
+        { id: "low", kind: "fact", content: "Minor thing", importance: 0.1 },
+        { id: "high", kind: "constraint", content: "Big thing\nIt matters a lot.", importance: 0.9 },
+      ],
+    });
+
+    expect(await memory.list({ companyId: COMPANY_ID })).toEqual({
+      entries: [
+        { id: "high", title: "Big thing", summary: "It matters a lot.", asOf: undefined, importance: 0.9 },
+        { id: "low", title: "Minor thing", summary: "fact", asOf: undefined, importance: 0.1 },
+      ],
+      truncated: false,
+    });
+
+    expect(await memory.list({ companyId: COMPANY_ID }, { limit: 1 })).toMatchObject({
+      truncated: true,
+    });
   });
 });

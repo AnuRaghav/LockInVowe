@@ -19,7 +19,11 @@ export {
 export { SEEDED_MEMORIES, createSeededPersistentMemory } from "@/lib/memory/seed";
 export {
   MEMORY_KINDS,
+  supportsMemoryDirectory,
   supportsMemoryHistory,
+  type MemoryDirectory,
+  type MemoryDirectoryEntry,
+  type MemoryDirectoryReader,
   type MemoryHistory,
   type MemoryKind,
   type MemoryQuery,

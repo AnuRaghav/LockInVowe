@@ -16,7 +16,7 @@ const COMPANY_ID = "company_test_1";
 const TEST_CONTEXT = { companyId: COMPANY_ID, financials: testFinancialSession(COMPANY_ID) };
 
 /** A run wired to seeded company memory, as the application wires it in production. */
-const withMemory = (overrides: { maxMemories?: number; threadId?: string } = {}) => {
+const withMemory = (overrides: { maxDirectoryEntries?: number; threadId?: string } = {}) => {
   const persistentMemory = createSeededPersistentMemory(COMPANY_ID);
 
   return {
@@ -24,7 +24,9 @@ const withMemory = (overrides: { maxMemories?: number; threadId?: string } = {})
     contextBuilder: createSamContextBuilder({
       persistentMemory,
       threadMemory: new InMemoryThreadMemory(),
-      maxMemories: overrides.maxMemories,
+      maxDirectoryEntries: overrides.maxDirectoryEntries,
+      loadBrief: async () => null,
+      loadOperating: async () => null,
     }),
   };
 };
@@ -113,7 +115,7 @@ describe("runSamAgent", () => {
     expect(result.text).toEqual(expect.any(String));
   });
 
-  it("opens the run with company memory the founder never mentioned", async () => {
+  it("opens the run knowing which topics exist, without their bodies", async () => {
     createSamModel.mockReturnValue(new FakeToolCallingModel({ toolCalls: [[]] }));
 
     const result = await runSamAgent({
@@ -121,12 +123,15 @@ describe("runSamAgent", () => {
       ...withMemory(),
     });
 
-    // The context builder selected it...
-    expect(result.initialContext.memories.map((memory) => memory.id)).toContain(
+    // The directory listed it...
+    expect(result.initialContext.directory?.entries.map((entry) => entry.id)).toContain(
       "mem_runway_floor"
     );
-    // ...and it reached the model. (The fake echoes every message it was sent.)
-    expect(result.text).toContain("at least 12 months of runway");
+    // ...and reached the model as a retrievable id. (The fake echoes its input.)
+    expect(result.text).toContain("COMPANY KNOWLEDGE DIRECTORY");
+    expect(result.text).toContain("mem_runway_floor");
+    // ...as an id it can pass to get_memory, alongside the instruction to do so.
+    expect(result.text).toContain("call get_memory with an id");
   });
 
   it("discovers memory mid-loop that the initial context did not include", async () => {
@@ -141,11 +146,12 @@ describe("runSamAgent", () => {
 
     const result = await runSamAgent({
       messages: "How much cash do we need to get to our next milestone?",
-      // Only one memory up front, so the raise plan is genuinely not in context.
-      ...withMemory({ maxMemories: 1 }),
+      // A directory clipped to one entry, so the raise plan is genuinely not
+      // listed and the tool is the only way to it.
+      ...withMemory({ maxDirectoryEntries: 1 }),
     });
 
-    expect(result.initialContext.memories.map((memory) => memory.id)).not.toContain(
+    expect(result.initialContext.directory?.entries.map((entry) => entry.id)).not.toContain(
       "mem_raise_march"
     );
     expect(result.toolCalls).toEqual([{ name: searchCall.name, args: searchCall.args }]);

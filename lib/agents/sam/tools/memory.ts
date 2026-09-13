@@ -64,12 +64,6 @@ export const searchMemoryInputSchema = z.object({
     .describe(
       "What you are trying to find out, in plain language, e.g. 'runway policy' or 'fundraising plans'."
     ),
-  kinds: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Optional filter, e.g. 'constraint', 'plan', 'goal', 'decision', 'assumption', 'fact'."
-    ),
   limit: z
     .number()
     .int()
@@ -88,16 +82,15 @@ export const searchMemoryTool = tool(
       const { memory, scope } = resolveMemory(runtime, SEARCH_TOOL_NAME);
       const records = await memory.search(scope, {
         text: input.query,
-        kinds: input.kinds,
         limit: input.limit,
       });
 
       return { topics: records.map(toModelShape) };
-    }),
+    }, { class: "management_context", origin: "semantic" }),
   {
     name: SEARCH_TOOL_NAME,
     description:
-      "Search the company's current understanding of itself: its plans, assumptions, constraints, decisions, priorities, risks, and operating context. Returns what the company believes now - superseded versions are never returned. Call this whenever a question depends on something about the company you were not given this turn, before saying you do not know. The company is set by the server; never ask for or guess a company id.",
+      "Word-match the company's current understanding of itself when the directory in your context is not enough. Your context already lists every current topic by id with a one-line summary, so prefer get_memory with an id you can see there; use this to find a topic whose wording you are unsure of, or when the directory says topics went unlisted. Returns what the company believes now - superseded versions are never returned - and matching is lexical, so an empty result means these words were not found, not that the company has no view. The company is set by the server; never ask for or guess a company id.",
     schema: searchMemoryInputSchema,
   }
 );
@@ -123,11 +116,11 @@ export const getMemoryTool = tool(
       if (!record) throw new Error(`No topic "${input.id}" for this company.`);
 
       return toModelShape(record);
-    }),
+    }, { class: "management_context", origin: "semantic" }),
   {
     name: GET_TOOL_NAME,
     description:
-      "Retrieve one topic by the id shown in your context or returned by search_memory, when you need its exact current wording. The company is set by the server.",
+      "Read one topic in full, by an id from the company-knowledge directory in your context or returned by search_memory. This is the main way to reach company context: the directory tells you a topic exists and what it covers, and this returns what it actually says. Use it before modelling anything that depends on a stated plan, target or constraint. Returns current understanding only, as management states it - not a verified financial actual. The company is set by the server.",
     schema: getMemoryInputSchema,
   }
 );
@@ -194,7 +187,7 @@ export const getMemoryHistoryTool = tool(
           replacedOn: revision.supersededAt,
         })),
       };
-    }),
+    }, { class: "management_context", origin: "semantic" }),
   {
     name: HISTORY_TOOL_NAME,
     description:
