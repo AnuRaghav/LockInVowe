@@ -3,6 +3,7 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { createAgent } from "langchain";
 
 import type { SamModelConfig } from "@/lib/agents/sam/config";
+import { samContextSchema, type SamContext } from "@/lib/agents/sam/context";
 import { createSamModel } from "@/lib/agents/sam/model";
 import { SAM_SYSTEM_PROMPT } from "@/lib/agents/sam/prompt";
 import { samAnswerSchema, type SamAnswer, type SamToolCall } from "@/lib/agents/sam/schemas";
@@ -31,6 +32,7 @@ export const createSamAgent = ({
     model: createSamModel(model),
     tools,
     systemPrompt,
+    contextSchema: samContextSchema,
   });
 
 /** Same agent, but constrained to return a typed {@link SamAnswer}. */
@@ -43,12 +45,21 @@ export const createStructuredSamAgent = ({
     model: createSamModel(model),
     tools,
     systemPrompt,
+    contextSchema: samContextSchema,
     responseFormat: samAnswerSchema,
   });
 
 export interface SamRunInput extends CreateSamAgentOptions {
   /** A single founder question, or a full conversation to continue. */
   messages: string | BaseMessage[];
+  /**
+   * Trusted execution context, resolved by the caller before the run starts.
+   *
+   * This is the only way a company reaches a tool. It is never part of the
+   * model's tool arguments, so Claude can choose *what* to call but never
+   * *whose data* it touches.
+   */
+  context: SamContext;
 }
 
 export interface SamRunResult {
@@ -82,10 +93,14 @@ const finalText = (messages: BaseMessage[]): string =>
  */
 export const runSamAgent = async ({
   messages,
+  context,
   ...options
 }: SamRunInput): Promise<SamRunResult> => {
   const agent = createSamAgent(options);
-  const result = await agent.invoke({ messages: toMessages(messages) });
+  const result = await agent.invoke(
+    { messages: toMessages(messages) },
+    { context: samContextSchema.parse(context) }
+  );
 
   return {
     text: finalText(result.messages),
@@ -97,10 +112,14 @@ export const runSamAgent = async ({
 /** Same as {@link runSamAgent}, but the reply is parsed into a typed answer. */
 export const runSamAgentStructured = async ({
   messages,
+  context,
   ...options
 }: SamRunInput): Promise<SamStructuredRunResult> => {
   const agent = createStructuredSamAgent(options);
-  const result = await agent.invoke({ messages: toMessages(messages) });
+  const result = await agent.invoke(
+    { messages: toMessages(messages) },
+    { context: samContextSchema.parse(context) }
+  );
 
   return {
     text: result.structuredResponse.answer,
