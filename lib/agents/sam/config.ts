@@ -1,7 +1,7 @@
 /**
  * Environment + model configuration for the Sam agent.
  *
- * Everything the agent needs to talk to Anthropic (and optionally ElevenLabs)
+ * Everything the agent needs to talk to Anthropic
  * is resolved here so the rest of the package never reads `process.env`.
  */
 
@@ -27,12 +27,6 @@ export interface SamModelConfig {
    * the model decides how much to think per turn. `effort` tunes the depth.
    */
   effort: "low" | "medium" | "high" | "xhigh" | "max";
-}
-
-export interface SamVoiceConfig {
-  apiKey: string;
-  voiceId: string;
-  modelId: string;
 }
 
 const requireEnv = (name: string): string => {
@@ -85,19 +79,3 @@ export const getSamModelConfig = (
     overrides.maxTokens ?? readIntEnv("SAM_MAX_TOKENS", DEFAULT_SAM_MAX_TOKENS),
   effort: overrides.effort ?? readEffort(),
 });
-
-/**
- * Resolves ElevenLabs config. Voice is optional, so this returns `null` when
- * credentials are absent rather than throwing.
- */
-export const getSamVoiceConfig = (): SamVoiceConfig | null => {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = process.env.ELEVENLABS_VOICE_ID;
-  if (!apiKey || !voiceId) return null;
-
-  return {
-    apiKey,
-    voiceId,
-    modelId: process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5",
-  };
-};

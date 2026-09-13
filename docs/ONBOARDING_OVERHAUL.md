@@ -297,7 +297,7 @@ All tables follow the existing pattern: RLS on, service role only.
 
 ## Out of scope for v1
 
-- Voice onboarding (`lib/agents/sam/voice.ts` exists, but it is a separate slice).
+- Voice onboarding (Sam uses text-only conversations).
 - Multiple founders per company. The schema allows it; the UI and membership
   do not yet.
 - Proactive alert delivery. Thresholds are captured now; notifications are not

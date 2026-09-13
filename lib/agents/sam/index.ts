@@ -33,9 +33,7 @@ export { streamSamAgent, type SamRunStream } from "@/lib/agents/sam/stream";
 export {
   DEFAULT_SAM_MODEL,
   getSamModelConfig,
-  getSamVoiceConfig,
   type SamModelConfig,
-  type SamVoiceConfig,
 } from "@/lib/agents/sam/config";
 
 export {
@@ -91,4 +89,3 @@ export {
   toolSuccess,
   type SamToolPayload,
 } from "@/lib/agents/sam/tools/result";
-export { isVoiceEnabled, speak } from "@/lib/agents/sam/voice";

@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 
 import { ActivitySummary, ActivityTrail } from "@/components/chat/ActivityTrail";
 import { CopyButton } from "@/components/chat/CopyButton";
-import { ListenButton } from "@/components/chat/ListenButton";
 import { ChartFigure } from "@/components/chat/ChartFigure";
 import { Markdown } from "@/components/chat/Markdown";
 import { currentActivity, summarizeActivity, type ActivityStep } from "@/lib/chat/activity";
@@ -147,7 +146,6 @@ export function MessageList({
             content={message.content}
             summary={summaries[message.id]}
             charts={message.charts}
-            footer={<ListenButton threadId={message.threadId} messageId={message.id} />}
           />
         ),
       )}
@@ -176,46 +174,21 @@ const STARTERS = [
 
 /** Shown for a brand-new thread, and for `/chat` before anything is selected. */
 export function EmptyConversation({
-  voiceControl,
   onAsk,
   disabled = false,
-  run,
-  companion,
 }: {
-  voiceControl?: ReactNode;
   onAsk?: (question: string) => void;
   disabled?: boolean;
-  run?: RunView | null;
-  companion?: ReactNode;
 }) {
   return (
     <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col items-center justify-center gap-7 px-5 py-16 text-center sm:px-6">
-      <div className="grid w-full items-center gap-8 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.95fr)]">
-        <div className="relative flex flex-col items-center justify-center">
-          {run && run.steps.length > 0 && (
-            <div className="pointer-events-none absolute -right-2 top-1/2 z-0 hidden w-64 -translate-y-1/2 rounded-3xl border border-border bg-surface/80 p-3 text-left shadow-2xl shadow-black/20 backdrop-blur md:block">
-              <ActivityTrail steps={run.steps} starting={run.phase === "submitting"} />
-            </div>
-          )}
-          <div className="relative z-10">{voiceControl}</div>
-        </div>
-        <div className="hidden min-h-[18rem] items-center justify-center md:flex">
-          {companion ? (
-            <div className="w-full animate-in fade-in duration-500">{companion}</div>
-          ) : (
-            <div className="rounded-3xl border border-dashed border-border px-6 py-8 text-left text-[13.5px] leading-relaxed text-muted-2">
-              Visuals Sam creates, like charts or scenario outputs, will appear here while the voice answer plays.
-            </div>
-          )}
-        </div>
-      </div>
       <div className="flex flex-col gap-2">
         <h2 className="text-balance text-2xl font-semibold tracking-tight text-foreground">
-          Ask Sam out loud.
+          Ask Sam.
         </h2>
         <p className="max-w-[42ch] text-[15px] leading-relaxed text-muted">
-          Sam has your company&apos;s numbers. Tap the orb, ask about runway, hiring, spend, or a scenario,
-          and Sam will answer back by voice.
+          Sam has your company&apos;s numbers. Ask about runway, hiring, spend, or a scenario.
+          Answers and charts appear right here in the conversation.
         </p>
       </div>
       {onAsk && (
