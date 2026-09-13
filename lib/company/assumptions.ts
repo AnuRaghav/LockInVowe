@@ -1,4 +1,5 @@
 import { minorUnitExponent } from "@/lib/source/money";
+import type { SourceProviderId } from "@/lib/source";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -387,3 +388,89 @@ export const saveOnboardingAnswers = async (
 
   if (error) throw error;
 };
+
+/** Whether an active source connection exists for a provider - independent of whether it has produced any data yet. */
+export const hasActiveSourceConnection = async (
+  companyId: string,
+  provider: SourceProviderId
+): Promise<boolean> => {
+  const supabase = createServiceClient();
+  const { count, error } = await supabase
+    .from("source_connections")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", companyId)
+    .eq("provider", provider)
+    .eq("status", "active");
+
+  if (error) throw error;
+  return (count ?? 0) > 0;
+};
+
+/** Gusto lives outside the Source Layer, so its connection has its own table. */
+export const hasActivePayrollConnection = async (companyId: string): Promise<boolean> => {
+  const supabase = createServiceClient();
+  const { count, error } = await supabase
+    .from("payroll_connections")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", companyId)
+    .eq("status", "active");
+
+  if (error) throw error;
+  return (count ?? 0) > 0;
+};
+
+export interface OnboardingSnapshot {
+  cashOnHandUsd: number | null;
+  monthlyPayrollCostUsd: number | null;
+  mrrUsd: number | null;
+  stripeConnected: boolean;
+  payrollConnected: boolean;
+  currentTeam: TeamMember[] | null;
+  currentTeamSource: "founder" | "gusto" | null;
+  assumptions: CompanyAssumptions;
+}
+
+/**
+ * Everything the onboarding review step and the post-onboarding dashboard
+ * need about one company: derived actuals where they exist, founder-entered
+ * assumptions filling the gaps. The single source of truth for both -
+ * GET /api/onboarding and app/dashboard/page.tsx both call this rather than
+ * each assembling it themselves.
+ */
+export const getOnboardingSnapshot = async (companyId: string): Promise<OnboardingSnapshot> => {
+  const [
+    cashOnHandUsd,
+    monthlyPayrollCostUsd,
+    mrrUsd,
+    stripeConnected,
+    payrollConnected,
+    currentTeam,
+    assumptions,
+  ] = await Promise.all([
+    deriveCashFromBankAccounts(companyId),
+    deriveMonthlyPayrollCostFromGusto(companyId),
+    deriveMrrFromStripeRevenue(companyId),
+    hasActiveSourceConnection(companyId, "stripe"),
+    hasActivePayrollConnection(companyId),
+    getCurrentTeam(companyId),
+    getCompanyAssumptions(companyId),
+  ]);
+
+  return {
+    cashOnHandUsd: cashOnHandUsd ?? (assumptions[ASSUMPTION_KEYS.cashOnHandUsd] as number | undefined) ?? null,
+    monthlyPayrollCostUsd:
+      monthlyPayrollCostUsd ?? (assumptions[ASSUMPTION_KEYS.monthlyPayrollCostUsd] as number | undefined) ?? null,
+    // `mrrUsd` is a proxy derived from the last 30 days of Stripe activity, so
+    // it can legitimately come back 0 for a connected account with no charges
+    // yet - `stripeConnected` is what the UI shows a "Connected" badge from.
+    mrrUsd: mrrUsd ?? (assumptions[ASSUMPTION_KEYS.mrrUsd] as number | undefined) ?? null,
+    stripeConnected,
+    payrollConnected,
+    // Founder-edited team if saved, else Gusto's active employees; null when
+    // payroll isn't connected. `source` tells the caller which one it is.
+    currentTeam: currentTeam?.team ?? null,
+    currentTeamSource: currentTeam?.source ?? null,
+    assumptions,
+  };
+};
+

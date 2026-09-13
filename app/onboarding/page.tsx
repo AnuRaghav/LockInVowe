@@ -782,10 +782,10 @@ export default function OnboardingPage() {
                 <button type="button" onClick={() => setStep("questions")} className={pillSecondary}>
                   Edit answers
                 </button>
-                {/* The one way into the conversation workspace: everything above is
-                    the model Sam answers from. /chat itself never requires this. */}
-                <Link href="/chat" className={pillPrimary}>
-                  Talk to Sam
+                {/* Everything above is the model Sam answers from - onboarding
+                    completion just hands off to the dashboard, not chat directly. */}
+                <Link href="/dashboard" className={pillPrimary}>
+                  Go to your dashboard
                 </Link>
               </div>
             </BlurFade>
