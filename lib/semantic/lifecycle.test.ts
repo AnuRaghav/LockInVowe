@@ -129,7 +129,7 @@ const openTurn = async (request: string) => {
   const contextBuilder = createSamContextBuilder({
     persistentMemory: new SemanticPersistentMemory({ reader: store }),
     loadBrief: async () => (await briefs.getCurrent()) ?? null,
-    maxMemories: 3,
+    loadOperating: async () => null,
   });
 
   const context = await contextBuilder.build({
@@ -249,19 +249,21 @@ describe("the semantic lifecycle, conversation to context", () => {
     const { context, prompt } = await openTurn("Can we hire another engineer?");
 
     expect(context.brief).not.toBeNull();
-    expect(prompt).toContain("Company brief");
+    expect(prompt).toContain("COMPANY BRIEF");
 
     // The brief carries the standing picture the question never mentions: the
     // cash position, and the raise the hiring answer actually hinges on.
     expect(context.brief?.body).toContain("$1.8M");
     expect(context.brief?.body).toContain("Series A");
 
-    // Relevance-selected context is what *this* question is about. Fundraising
-    // is deliberately absent from it - it is already baseline, and paying for
-    // it twice in one prompt is the context-stuffing this split exists to stop.
-    const keys = context.memories.map((memory) => memory.id);
+    // The directory lists every current topic by key, so Sam can see that
+    // hiring and fundraising exist and retrieve either on purpose. The bodies
+    // stay behind get_memory - listing what exists is not the same as paying
+    // for what it says, which is the whole orientation/detail split.
+    const keys = context.directory?.entries.map((entry) => entry.id) ?? [];
     expect(keys).toContain("hiring");
-    expect(keys).not.toContain("financial-posture");
+    expect(keys).toContain("financial-posture");
+    expect(keys).toContain("fundraising");
 
     // Step 8: the September plan is not in front of the model anywhere.
     expect(prompt).not.toContain("two engineers");
@@ -312,6 +314,9 @@ describe("the semantic lifecycle, conversation to context", () => {
     expect(brief!.body.length).toBeLessThanOrEqual(2000);
     // The whole opening context, brief included, stays a prompt rather than a
     // document. This is the number that regresses first if selection slips.
-    expect(prompt.length).toBeLessThan(6000);
+    // Raised from 6000 when orientation replaced relevance injection: the
+    // capability index and epistemic rules cost ~1.1k of system prompt, and the
+    // knowledge directory costs a line per topic instead of three bodies.
+    expect(prompt.length).toBeLessThan(7000);
   });
 });

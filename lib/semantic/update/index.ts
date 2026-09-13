@@ -18,6 +18,7 @@ import { hasSemanticModel } from "@/lib/semantic/model";
 import type {
   SemanticInteraction,
   SemanticProposer,
+  SemanticUpdateLimits,
   SemanticUpdateResult,
 } from "@/lib/semantic/update/types";
 
@@ -65,6 +66,8 @@ export interface UpdateSemanticStateInput {
   maxBlocks?: number;
   /** Wall clock, injectable so a test's proposal is reproducible. */
   now?: string;
+  /** Operation ceilings. Conversations keep the defaults; onboarding raises them. */
+  limits?: SemanticUpdateLimits;
 }
 
 const DEFAULT_MAX_BLOCKS = 8;
@@ -129,6 +132,7 @@ export const updateSemanticState = async ({
   interactions,
   maxBlocks = DEFAULT_MAX_BLOCKS,
   now = new Date().toISOString(),
+  limits,
 }: UpdateSemanticStateInput): Promise<SemanticUpdateResult> => {
   const blocks = store ?? createSemanticBlockStore();
   const log = interactions ?? createSemanticInteractionStore();
@@ -163,6 +167,7 @@ export const updateSemanticState = async ({
       store: blocks,
       proposal,
       interaction: stored,
+      limits,
     });
 
     const status = applied.length > 0 ? "applied" : "unchanged";
@@ -212,6 +217,7 @@ export {
   createScriptedSemanticProposer,
 } from "@/lib/semantic/update/proposer";
 export {
+  SEMANTIC_ONBOARDING_PROMPT,
   SEMANTIC_UPDATER_PROMPT,
   renderSemanticProposalRequest,
 } from "@/lib/semantic/update/prompt";

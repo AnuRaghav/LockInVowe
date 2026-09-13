@@ -57,7 +57,10 @@ export interface SamRunStartedEvent extends SamEventBase {
  */
 export interface SamContextBuiltEvent extends SamEventBase {
   type: "context_built";
-  memoryCount: number;
+  /** Topics Sam was told exist. A count, never the topics themselves. */
+  directoryEntryCount: number;
+  /** Whether a stated operating plan reached the run: available/empty/unavailable. */
+  companyPlanStatus: string;
   threadNoteCount: number;
   budget: SamContextBudget;
 }

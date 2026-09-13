@@ -43,7 +43,9 @@ export const buildCreateChartTool = (dependencies: ChartToolDependencies = defau
           status: "shown_to_founder",
           instruction: "The chart appears directly below your reply. Refer to it in words; do not add image links or repeat every data point.",
         };
-      }),
+        // A receipt for values Sam supplied in this conversation - never new
+        // evidence about the company, so it carries the weakest class.
+      }, { class: "conversation_claim", origin: "chat:chart" }),
     {
       name: CREATE_CHART_TOOL_NAME,
       schema: createChartSchema,

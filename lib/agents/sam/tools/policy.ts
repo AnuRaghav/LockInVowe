@@ -93,11 +93,13 @@ export const SAM_TOOL_POLICIES: Readonly<Record<string, SamToolPolicy>> = {
     retryable: true,
     requiresApproval: false,
     label: "Searching company memory",
-    // How much was found, never what.
+    // How much was found, never what. The key must match the tool's actual
+    // result shape (`{ topics }`); it read `memories` until 2026-09 and so
+    // never produced a summary at all.
     summarize: (data) => {
-      const memories = field(data, "memories");
-      return Array.isArray(memories)
-        ? `${memories.length} ${memories.length === 1 ? "memory" : "memories"} matched`
+      const topics = field(data, "topics");
+      return Array.isArray(topics)
+        ? `${topics.length} ${topics.length === 1 ? "topic" : "topics"} matched`
         : undefined;
     },
   },
@@ -106,6 +108,31 @@ export const SAM_TOOL_POLICIES: Readonly<Record<string, SamToolPolicy>> = {
     retryable: true,
     requiresApproval: false,
     label: "Reading a company note",
+  },
+  // Reading how a topic changed is a read like any other. Without an entry here
+  // it inherited DEFAULT_SAM_TOOL_POLICY - `action`, non-retryable - so a
+  // dropped connection on a history lookup ended the run as critical and would
+  // have been approval-gated the moment an approver existed.
+  get_memory_history: {
+    kind: "read_only",
+    retryable: true,
+    requiresApproval: false,
+    label: "Reading how a topic changed",
+  },
+  get_company_plan: {
+    kind: "read_only",
+    retryable: true,
+    requiresApproval: false,
+    label: "Reading the company plan",
+    // Whether a plan exists and how complete it is - never a figure from it.
+    summarize: (data) => {
+      const status = field(data, "status");
+      if (status === "empty") return "No company plan on file";
+      const missing = field(data, "missing");
+      return Array.isArray(missing) && missing.length > 0
+        ? `Company plan read, ${missing.length} field${missing.length === 1 ? "" : "s"} not recorded`
+        : undefined;
+    },
   },
   create_chart: {
     // Stores a chart against the turn, so a blind retry would draw it twice.

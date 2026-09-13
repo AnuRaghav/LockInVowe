@@ -50,8 +50,11 @@ const tokenize = (text: string): string[] => [
   ),
 ];
 
+/** The fields relevance reads. Structural, so founder blocks rank the same way. */
+type RankableBlock = Pick<SemanticBlock, "key" | "title" | "summary" | "body" | "labels">;
+
 /** Prefix-tolerant overlap, mirroring the OR-of-prefixes the SQL search uses. */
-const relevance = (text: string, block: SemanticBlock): number => {
+export const textRelevance = (text: string, block: RankableBlock): number => {
   const queryTokens = tokenize(text);
   if (queryTokens.length === 0) return 0;
 
@@ -142,7 +145,7 @@ export class InMemorySemanticBlockStore implements SemanticBlockStore {
       .map((stored) => stored.block)
       .filter((block) => statuses.includes(block.status))
       .filter((block) => !query.labels?.length || block.labels.some((label) => query.labels?.includes(label)))
-      .map((block) => ({ block, score: query.text ? relevance(query.text, block) : 0 }))
+      .map((block) => ({ block, score: query.text ? textRelevance(query.text, block) : 0 }))
       // A query that matches nothing returns nothing, as in SQL. Falling back to
       // "here is everything" would hide a retrieval failure behind plausible
       // output, which is the hardest kind of bug to notice.

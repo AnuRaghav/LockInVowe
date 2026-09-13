@@ -76,35 +76,35 @@ export const financialPositionTool = tool(async (input, runtime: Runtime) => run
   return { companyId: actuals.companyId, evaluatedAt: actuals.evaluatedAt, currencies: currencies.slice(input.offset, input.offset + 20),
     total: currencies.length, nextOffset: input.offset + 20 < currencies.length ? input.offset + 20 : null,
     status: currencies.length ? "qualified" : "no_eligible_accounts", instruction: "Select one currency to read its observed position; never combine currencies." };
-}), { name: "financial_position", schema: financialPositionSchema,
-  description: "Read observed cash and signed credit positions for a currency from connected data, with scope and freshness. Omit currency to discover observed currencies (paged by offset). Never supply cash/revenue/expense inputs or company identity. Missing or stale data is not zero or current company truth." });
+}, { class: "financial_actual", origin: "numerical-model" }), { name: "financial_position", schema: financialPositionSchema,
+  description: "CURRENT POSITION. Read observed cash and signed credit positions for a currency from connected data, with scope and freshness. Use this for 'how much cash do we have?' when your opening snapshot does not already answer it, or to check a currency the snapshot omitted; use financial_cash_flow for movement over a period. Omit currency to discover observed currencies (paged by offset). Never supply cash/revenue/expense inputs or company identity. Missing or stale data is not zero or current company truth." });
 export const financialCashFlowTool = tool(async (input, runtime: Runtime) => runTool(async () => {
   const { reconciled } = await data(runtime, "financial_cash_flow");
   return { companyId: reconciled.companyId, ...summarizeCashPeriod(analyzeCashPeriod(reconciled, input.currency, input.period)) };
-}), { name: "financial_cash_flow", schema: financialCashFlowSchema,
-  description: "Analyze recorded cash movements for completed UTC days: internal transfers, repayments, unresolved amounts and external-flow availability. Recorded movement is not balance-to-balance cash change or operating burn. Use explain_financial_number for contributing evidence." });
+}, { class: "financial_actual", origin: "numerical-model" }), { name: "financial_cash_flow", schema: financialCashFlowSchema,
+  description: "HISTORICAL MOVEMENT over one period. Analyze recorded cash movements for completed UTC days: internal transfers, repayments, unresolved amounts and external-flow availability. Use this for 'what happened to cash last month?'; use compare_financial_periods to contrast two periods, and explain_financial_number for the entries behind a figure. Recorded movement is not balance-to-balance cash change or operating burn. Example: {currency:\"USD\", period:{start:\"2026-08-01\", endExclusive:\"2026-09-01\"}}." });
 export const financialBurnRunwayTool = tool(async (input, runtime: Runtime) => runTool(async () => {
   const { reconciled, actuals } = await data(runtime, "financial_burn_runway");
   return financialBurnRunway(input.trailingMonths === actuals.windows.months ? actuals :
     deriveFinancialActuals(reconciled, { trailingMonths: input.trailingMonths }), input.currency);
-}), { name: "financial_burn_runway", schema: financialBurnRunwaySchema,
-  description: "Get supported burn/runway status and reasons, historical basis, and recorded cash-consumption comparison. May correctly return unavailable burn/runway. Never infer operating burn from account debits or calculate a substitute runway. Only window length and currency are selectable." });
+}, { class: "financial_actual", origin: "numerical-model" }), { name: "financial_burn_runway", schema: financialBurnRunwaySchema,
+  description: "BURN AND RUNWAY QUALIFICATION. Get supported burn/runway status and reasons, historical basis, and recorded cash-consumption comparison. Use this before answering any runway question: it reports whether runway is establishable at all and why not. May correctly return unavailable burn/runway - report the reasons. Never infer operating burn from account debits or calculate a substitute runway. For a forward-looking runway under stated assumptions use forecast_cash or the scenario tools instead. Only window length and currency are selectable." });
 export const financialComparisonTool = tool(async (input, runtime: Runtime) => runTool(async () => {
   const { reconciled } = await data(runtime, "compare_financial_periods");
   return financialComparison(reconciled, input.currency, input.current, input.prior);
-}), { name: "compare_financial_periods", schema: financialComparisonSchema,
-  description: "Compare deterministic recorded cash movement and consumption across two periods. Returns exact deltas, separate uncertainty, qualifications and operating-burn trend availability. Different-length periods compare totals, not normalized rates." });
+}, { class: "financial_actual", origin: "numerical-model" }), { name: "compare_financial_periods", schema: financialComparisonSchema,
+  description: "COMPARE TWO PAST PERIODS. Compare deterministic recorded cash movement and consumption across two periods. Use this for 'is burn getting worse?' or 'how does this month compare?'. Returns exact deltas, separate uncertainty, qualifications and operating-burn trend availability. Different-length periods compare totals, not normalized rates. Example: {currency:\"USD\", current:{start:\"2026-08-01\", endExclusive:\"2026-09-01\"}, prior:{start:\"2026-07-01\", endExclusive:\"2026-08-01\"}}." });
 export const financialTraceTool = tool(async (input, runtime: Runtime) => runTool(async () => {
   const { reconciled, actuals } = await data(runtime, "explain_financial_number");
   return explainFinancialNumber(reconciled, actuals, input);
-}), { name: "explain_financial_number", schema: financialTraceSchema,
-  description: "Explain cash, credit position, recorded cash movement or cash consumption with calculation basis and paged Source evidence. Cash/credit are current (omit period); movement/consumption require a period. Totals always cover the full scope; evidence pages are partial. Never sum pages, classify entries or infer vendors yourself. Lower limit if the harness requests a smaller result." });
+}, { class: "source_evidence", origin: "source-layer" }), { name: "explain_financial_number", schema: financialTraceSchema,
+  description: "PROVE OR EXPLAIN ONE NUMBER. Explain cash, credit position, recorded cash movement or cash consumption with calculation basis and paged Source evidence: accounts, providers, balance observations and the entries behind a movement. Use this whenever asked where a figure came from, why it changed, which accounts are included, or to justify a claim you made. Cash/credit are current (omit period); movement/consumption require a period. Totals always cover the full scope; evidence pages are partial. Never sum pages, classify entries or infer vendors yourself. Lower limit if the harness requests a smaller result." });
 
 export const forecastCashTool = tool(async (input, runtime: Runtime) => runTool(async () => {
   const { actuals } = await data(runtime, "forecast_cash");
   return summarizeCashForecast(buildCashForecast(actuals, forecastInput(input)), input);
-}), { name: "forecast_cash", schema: forecastCashSchema,
-  description: "Produce a deterministic, paged cash trajectory from the connected observed cash position plus explicit future assumptions. Resolve missing plans or management assumptions with memory tools first; never invent revenue, payroll, commitments, or starting cash. Use baseline=none for a deliberately partial known-deltas trajectory. The connected actual cash position cannot be overridden. Returns conditional consequences, basis/provenance, qualifications, zero/reserve/runway thresholds, and complete-horizon derived totals even when trajectory rows are paged." });
+}, { class: "financial_projection", origin: "forecast-engine", conditional: true }), { name: "forecast_cash", schema: forecastCashSchema,
+  description: "ONE CONDITIONAL TRAJECTORY, period by period. Produce a deterministic, paged cash trajectory from the connected observed cash position plus explicit future assumptions. Use this when the question needs the path (when does cash cross a threshold, what does month 7 look like); use simulate_financial_scenario to measure one change against a baseline, and compare_financial_scenarios for several named alternatives. Resolve missing plans or management assumptions with get_company_plan or the memory tools first; never invent revenue, payroll, commitments, or starting cash. Use baseline=none for a deliberately partial known-deltas trajectory. The connected actual cash position cannot be overridden. Example: {currency:\"USD\", startDate:\"2026-10-01\", horizon:{periods:12, granularity:\"month\"}, baseline:{method:\"none\"}, recurringDeltas:[{id:\"hire-1\", label:\"Platform engineer\", startDate:\"2026-11-01\", cadence:\"month\", driver:\"outflow\", change:\"increase\", amountMinor:1708300, basis:{kind:\"management_assumption\", label:\"Planned Q4 hire, ~$205K fully loaded\", reference:\"company_assumptions:planned_hires\"}}], thresholds:{runwayMonths:12}}. Returns conditional consequences, basis/provenance, qualifications, zero/reserve/runway thresholds, and complete-horizon derived totals even when trajectory rows are paged." });
 
 export const simulateFinancialScenarioTool = tool(async (input, runtime: Runtime) => runTool(async () => {
   const { actuals } = await data(runtime, "simulate_financial_scenario");
@@ -130,25 +130,27 @@ export const simulateFinancialScenarioTool = tool(async (input, runtime: Runtime
     pagination: summarizeCashForecast(result.scenario, input).pagination,
     instruction: "The baseline and scenario share connected starting cash and baseline assumptions. Differences are deterministic consequences, not a recommendation.",
   };
-}), { name: "simulate_financial_scenario", schema: simulateFinancialScenarioSchema,
-  description: "Apply one named set of explicit cash-flow deltas to a baseline and compare deterministic consequences. Use this generic primitive for hiring cost, spend changes, delayed cash, financing, customer loss, or purchases only after translating the business plan into explicit cash effects with a stated basis. Retrieve semantic context first when amounts/dates/constraints are missing. This tool computes consequences; it does not decide affordability or invent business drivers." });
+}, { class: "financial_projection", origin: "forecast-engine", conditional: true }), { name: "simulate_financial_scenario", schema: simulateFinancialScenarioSchema,
+  description: "ONE EXPLICIT SCENARIO against a baseline, with its trajectory. Apply one named set of explicit cash-flow deltas to a baseline and compare deterministic consequences. This is the tool for 'what does X do to our runway?' - the generic primitive for hiring cost, spend changes, delayed cash, financing, customer loss, or purchases, used only after translating the business plan into explicit cash effects with a stated basis. For two or more alternatives to weigh against each other use compare_financial_scenarios instead. Retrieve the plan with get_company_plan, or semantic context with the memory tools, when amounts/dates/constraints are missing. A recurring monthly hire cost is driver=outflow, change=increase; a spend cut is driver=outflow, change=decrease. This tool computes consequences; it does not decide affordability or invent business drivers." });
 
 export const compareFinancialScenariosTool = tool(async (input, runtime: Runtime) => runTool(async () => {
   const { actuals } = await data(runtime, "compare_financial_scenarios");
   const result = compareCashScenarios(actuals, forecastInput(input), input.scenarios);
   const baselineSummary = forecastConsequences(result.baseline);
   const scenarioSummaries = result.scenarios.map(item => ({ item, summary: forecastConsequences(item.forecast) }));
-  const qualifications = [...new Set([baselineSummary.qualifications,
+  const aggregateQualifications = [...new Set([baselineSummary.qualifications,
     ...scenarioSummaries.map(({ summary }) => summary.qualifications)].flat())].sort();
-  const { qualifications: _baselineQualifications, ...baselineConsequences } = baselineSummary;
+  const { qualifications: baselineQualifications, ...baselineConsequences } = baselineSummary;
+  void baselineQualifications;
   return {
     version: result.version,
     currency: input.currency,
     baseline: baselineConsequences,
-    qualifications,
+    qualifications: aggregateQualifications,
     baselineInputs: presentForecastInputs(input.currency, { baseline: input.baseline, events: input.events, recurringDeltas: input.recurringDeltas, assumptions: input.assumptions }),
     scenarios: scenarioSummaries.map(({ item, summary }, index) => {
-      const { qualifications: _scenarioQualifications, ...consequences } = summary;
+      const { qualifications: scenarioQualifications, ...consequences } = summary;
+      void scenarioQualifications;
       const scenarioInput = input.scenarios[index];
       return {
         name: item.name,
@@ -163,5 +165,5 @@ export const compareFinancialScenariosTool = tool(async (input, runtime: Runtime
     }),
     instruction: "Compare conditional consequences and qualifications. Use forecast_cash for trajectory rows if a scenario needs deeper inspection.",
   };
-}), { name: "compare_financial_scenarios", schema: compareFinancialScenariosSchema,
-  description: "Compare 1-8 arbitrary named deterministic cash scenarios against the same connected starting position and baseline assumptions. Returns ending/minimum cash, zero/reserve/runway thresholds, and cumulative incremental impact without large trajectories. Use after explicit scenario inputs are known; call forecast_cash for period-by-period investigation. Names such as base, bear, or bull have no hardcoded meaning." });
+}, { class: "financial_projection", origin: "forecast-engine", conditional: true }), { name: "compare_financial_scenarios", schema: compareFinancialScenariosSchema,
+  description: "SEVERAL NAMED ALTERNATIVES side by side. Compare 1-8 arbitrary named deterministic cash scenarios against the same connected starting position and baseline assumptions. Use this when the founder is choosing between options (hire none / one / two, raise now / later) and wants the trade-off; it accepts a single scenario too, but prefer simulate_financial_scenario when you need that scenario's period-by-period rows. Returns ending/minimum cash, zero/reserve/runway thresholds, and cumulative incremental impact without large trajectories. Call forecast_cash for period-by-period investigation of one of them. Names such as base, bear, or bull have no hardcoded meaning." });

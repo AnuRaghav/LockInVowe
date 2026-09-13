@@ -57,6 +57,96 @@ export type Database = {
           },
         ]
       }
+      companies: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string | null
+          onboarding_completed_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string | null
+          onboarding_completed_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string | null
+          onboarding_completed_at?: string | null
+        }
+        Relationships: []
+      }
+      company_assumptions: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          key: string
+          source: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          key: string
+          source?: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          key?: string
+          source?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      company_briefs: {
+        Row: {
+          body: string
+          company_id: string
+          fingerprint: string
+          generated_at: string
+          generator: Json
+          id: string
+          sections: Json
+          source_block_ids: string[]
+          version: number
+        }
+        Insert: {
+          body: string
+          company_id: string
+          fingerprint: string
+          generated_at?: string
+          generator?: Json
+          id?: string
+          sections?: Json
+          source_block_ids?: string[]
+          version: number
+        }
+        Update: {
+          body?: string
+          company_id?: string
+          fingerprint?: string
+          generated_at?: string
+          generator?: Json
+          id?: string
+          sections?: Json
+          source_block_ids?: string[]
+          version?: number
+        }
+        Relationships: []
+      }
       conversation_messages: {
         Row: {
           content: string
@@ -155,90 +245,251 @@ export type Database = {
         }
         Relationships: []
       }
-      companies: {
+      founder_block_revisions: {
         Row: {
-          created_at: string
+          as_of: string | null
+          attributes: Json
+          block_id: string
+          body: string
+          change_kind: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note: string | null
+          confidence: number | null
+          founder_id: string
           id: string
-          name: string
-          onboarding_completed_at: string | null
+          labels: string[]
+          provenance: Json
+          recorded_at: string
+          revision: number
+          salience: number
+          sensitivity: Database["public"]["Enums"]["founder_block_sensitivity"]
+          status: Database["public"]["Enums"]["semantic_block_status"]
+          summary: string | null
+          superseded_at: string | null
+          supersedes_revision_id: string | null
+          title: string
         }
         Insert: {
-          created_at?: string
+          as_of?: string | null
+          attributes?: Json
+          block_id: string
+          body: string
+          change_kind: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note?: string | null
+          confidence?: number | null
+          founder_id: string
           id?: string
-          name: string
-          onboarding_completed_at?: string | null
+          labels?: string[]
+          provenance?: Json
+          recorded_at?: string
+          revision: number
+          salience: number
+          sensitivity: Database["public"]["Enums"]["founder_block_sensitivity"]
+          status: Database["public"]["Enums"]["semantic_block_status"]
+          summary?: string | null
+          superseded_at?: string | null
+          supersedes_revision_id?: string | null
+          title: string
         }
         Update: {
-          created_at?: string
+          as_of?: string | null
+          attributes?: Json
+          block_id?: string
+          body?: string
+          change_kind?: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note?: string | null
+          confidence?: number | null
+          founder_id?: string
           id?: string
-          name?: string
-          onboarding_completed_at?: string | null
+          labels?: string[]
+          provenance?: Json
+          recorded_at?: string
+          revision?: number
+          salience?: number
+          sensitivity?: Database["public"]["Enums"]["founder_block_sensitivity"]
+          status?: Database["public"]["Enums"]["semantic_block_status"]
+          summary?: string | null
+          superseded_at?: string | null
+          supersedes_revision_id?: string | null
+          title?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "founder_block_revisions_block_id_founder_id_fkey"
+            columns: ["block_id", "founder_id"]
+            isOneToOne: false
+            referencedRelation: "founder_blocks"
+            referencedColumns: ["id", "founder_id"]
+          },
+          {
+            foreignKeyName: "founder_block_revisions_supersedes_revision_id_fkey"
+            columns: ["supersedes_revision_id"]
+            isOneToOne: false
+            referencedRelation: "founder_block_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      company_assumptions: {
+      founder_blocks: {
         Row: {
-          company_id: string
+          as_of: string | null
+          attributes: Json
+          body: string
+          confidence: number | null
           created_at: string
+          current_revision_id: string | null
+          founder_id: string
           id: string
           key: string
-          source: string
+          labels: string[]
+          provenance: Json
+          revision: number
+          salience: number
+          search: unknown
+          sensitivity: Database["public"]["Enums"]["founder_block_sensitivity"]
+          status: Database["public"]["Enums"]["semantic_block_status"]
+          summary: string | null
+          title: string
           updated_at: string
-          value: Json
         }
         Insert: {
-          company_id: string
+          as_of?: string | null
+          attributes?: Json
+          body: string
+          confidence?: number | null
           created_at?: string
+          current_revision_id?: string | null
+          founder_id: string
           id?: string
           key: string
-          source?: string
+          labels?: string[]
+          provenance?: Json
+          revision?: number
+          salience?: number
+          search?: unknown
+          sensitivity?: Database["public"]["Enums"]["founder_block_sensitivity"]
+          status?: Database["public"]["Enums"]["semantic_block_status"]
+          summary?: string | null
+          title: string
           updated_at?: string
-          value: Json
         }
         Update: {
-          company_id?: string
+          as_of?: string | null
+          attributes?: Json
+          body?: string
+          confidence?: number | null
           created_at?: string
+          current_revision_id?: string | null
+          founder_id?: string
           id?: string
           key?: string
-          source?: string
+          labels?: string[]
+          provenance?: Json
+          revision?: number
+          salience?: number
+          search?: unknown
+          sensitivity?: Database["public"]["Enums"]["founder_block_sensitivity"]
+          status?: Database["public"]["Enums"]["semantic_block_status"]
+          summary?: string | null
+          title?: string
           updated_at?: string
-          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "founder_blocks_current_revision_fkey"
+            columns: ["current_revision_id"]
+            isOneToOne: false
+            referencedRelation: "founder_block_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      founder_communication_contract_revisions: {
+        Row: {
+          alerts: Json
+          bad_news: string | null
+          change_kind: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note: string | null
+          detail: string | null
+          finance_fluency: string | null
+          flag_optimistic_assumptions: boolean | null
+          founder_id: string
+          id: string
+          provenance: Json
+          pushback: string | null
+          recommendations: string | null
+          recorded_at: string
+          revision: number
+        }
+        Insert: {
+          alerts?: Json
+          bad_news?: string | null
+          change_kind: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note?: string | null
+          detail?: string | null
+          finance_fluency?: string | null
+          flag_optimistic_assumptions?: boolean | null
+          founder_id: string
+          id?: string
+          provenance?: Json
+          pushback?: string | null
+          recommendations?: string | null
+          recorded_at?: string
+          revision: number
+        }
+        Update: {
+          alerts?: Json
+          bad_news?: string | null
+          change_kind?: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note?: string | null
+          detail?: string | null
+          finance_fluency?: string | null
+          flag_optimistic_assumptions?: boolean | null
+          founder_id?: string
+          id?: string
+          provenance?: Json
+          pushback?: string | null
+          recommendations?: string | null
+          recorded_at?: string
+          revision?: number
         }
         Relationships: []
       }
-      company_briefs: {
+      onboarding_sessions: {
         Row: {
-          body: string
+          checklist: Json
           company_id: string
-          fingerprint: string
-          generated_at: string
-          generator: Json
+          completed_at: string | null
+          founder_id: string
           id: string
-          sections: Json
-          source_block_ids: string[]
-          version: number
+          open_items: Json
+          started_at: string
+          status: string
+          transcript: Json
+          updated_at: string
         }
         Insert: {
-          body: string
+          checklist?: Json
           company_id: string
-          fingerprint: string
-          generated_at?: string
-          generator?: Json
+          completed_at?: string | null
+          founder_id: string
           id?: string
-          sections?: Json
-          source_block_ids?: string[]
-          version: number
+          open_items?: Json
+          started_at?: string
+          status?: string
+          transcript?: Json
+          updated_at?: string
         }
         Update: {
-          body?: string
+          checklist?: Json
           company_id?: string
-          fingerprint?: string
-          generated_at?: string
-          generator?: Json
+          completed_at?: string | null
+          founder_id?: string
           id?: string
-          sections?: Json
-          source_block_ids?: string[]
-          version?: number
+          open_items?: Json
+          started_at?: string
+          status?: string
+          transcript?: Json
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1018,6 +1269,148 @@ export type Database = {
         }
         Returns: undefined
       }
+      founder_block_revise: {
+        Args: {
+          p_as_of?: string
+          p_attributes?: Json
+          p_body: string
+          p_change_kind?: Database["public"]["Enums"]["semantic_change_kind"]
+          p_change_note?: string
+          p_confidence?: number
+          p_founder_id: string
+          p_key: string
+          p_labels?: string[]
+          p_provenance?: Json
+          p_recorded_at?: string
+          p_salience?: number
+          p_sensitivity?: Database["public"]["Enums"]["founder_block_sensitivity"]
+          p_status?: Database["public"]["Enums"]["semantic_block_status"]
+          p_summary?: string
+          p_title: string
+        }
+        Returns: {
+          block_id: string
+          created: boolean
+          revision: number
+          revision_id: string
+        }[]
+      }
+      founder_block_search: {
+        Args: {
+          p_founder_id: string
+          p_include_personal?: boolean
+          p_labels?: string[]
+          p_limit?: number
+          p_statuses?: Database["public"]["Enums"]["semantic_block_status"][]
+          p_text?: string
+        }
+        Returns: {
+          as_of: string | null
+          attributes: Json
+          body: string
+          confidence: number | null
+          created_at: string
+          current_revision_id: string | null
+          founder_id: string
+          id: string
+          key: string
+          labels: string[]
+          provenance: Json
+          revision: number
+          salience: number
+          search: unknown
+          sensitivity: Database["public"]["Enums"]["founder_block_sensitivity"]
+          status: Database["public"]["Enums"]["semantic_block_status"]
+          summary: string | null
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "founder_blocks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      founder_contract_revise: {
+        Args: {
+          p_change_kind?: Database["public"]["Enums"]["semantic_change_kind"]
+          p_change_note?: string
+          p_founder_id: string
+          p_patch: Json
+          p_provenance?: Json
+        }
+        Returns: {
+          alerts: Json
+          bad_news: string | null
+          change_kind: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note: string | null
+          detail: string | null
+          finance_fluency: string | null
+          flag_optimistic_assumptions: boolean | null
+          founder_id: string
+          id: string
+          provenance: Json
+          pushback: string | null
+          recommendations: string | null
+          recorded_at: string
+          revision: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "founder_communication_contract_revisions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      onboarding_session_record: {
+        Args: {
+          p_checklist?: Json
+          p_founder_id: string
+          p_messages?: Json
+          p_open_items?: Json
+          p_session_id: string
+        }
+        Returns: {
+          checklist: Json
+          company_id: string
+          completed_at: string | null
+          founder_id: string
+          id: string
+          open_items: Json
+          started_at: string
+          status: string
+          transcript: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "onboarding_sessions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      onboarding_session_start: {
+        Args: { p_company_id: string; p_founder_id: string }
+        Returns: {
+          checklist: Json
+          company_id: string
+          completed_at: string | null
+          founder_id: string
+          id: string
+          open_items: Json
+          started_at: string
+          status: string
+          transcript: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "onboarding_sessions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       semantic_block_document: {
         Args: {
           p_body: string
@@ -1091,6 +1484,7 @@ export type Database = {
       }
     }
     Enums: {
+      founder_block_sensitivity: "standard" | "personal"
       semantic_block_status: "active" | "dormant" | "resolved" | "archived"
       semantic_change_kind:
         | "created"
@@ -1243,6 +1637,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      founder_block_sensitivity: ["standard", "personal"],
       semantic_block_status: ["active", "dormant", "resolved", "archived"],
       semantic_change_kind: [
         "created",

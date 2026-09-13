@@ -18,6 +18,8 @@ export interface OperatingPlan extends MonthlyWindow {
   basis: ForecastBasis;
   revenue: RevenuePlan;
   employees: PlannedEmployee[];
+  /** Existing aggregate payroll when individual compensation isn't available. Never also include those employees. */
+  aggregatePayroll?: { monthlyCostMinor: number; headcount: number | null };
   /** All non-payroll operating expenses, excluding cost of revenue and one-time costs. */
   expenses: PlannedExpense[];
   costOfRevenueBps: number;
@@ -32,6 +34,10 @@ export type OperatingForecast = ReturnType<typeof forecastCash>;
 export function forecastCash(actuals: FinancialActuals, plan: OperatingPlan) {
   const timeline = periods(plan);
   integer(plan.costOfRevenueBps, "cost of revenue rate", 0, 100_000);
+  if (plan.aggregatePayroll) {
+    integer(plan.aggregatePayroll.monthlyCostMinor, "aggregate payroll");
+    if (plan.aggregatePayroll.headcount !== null) integer(plan.aggregatePayroll.headcount, "aggregate headcount");
+  }
   uniqueIds(plan.expenses); uniqueIds(plan.oneTimeCosts); uniqueIds(plan.raises);
   for (const expense of plan.expenses) {
     integer(expense.monthlyAmountMinor, "monthly expense"); date(expense.startDate);
@@ -50,7 +56,12 @@ export function forecastCash(actuals: FinancialActuals, plan: OperatingPlan) {
   const headcount = forecastHeadcountCost(plan, plan.employees);
   const rows = timeline.map(period => {
     const sales = revenue.rows[period.index];
-    const payroll = headcount[period.index];
+    const staffing = headcount[period.index];
+    const aggregate = plan.aggregatePayroll;
+    const payroll = { ...staffing, totalMinor: sum(staffing.totalMinor, aggregate?.monthlyCostMinor ?? 0),
+      headcount: aggregate?.headcount === null ? null : staffing.headcount + (aggregate?.headcount ?? 0),
+      averageHeadcount: aggregate?.headcount === null ? null : staffing.averageHeadcount + (aggregate?.headcount ?? 0),
+      aggregateCostMinor: aggregate?.monthlyCostMinor ?? 0 };
     const costs = plan.expenses.map(expense => {
       const start = expense.startDate > period.start ? expense.startDate : period.start;
       const end = expense.endExclusive && expense.endExclusive < period.endExclusive ? expense.endExclusive : period.endExclusive;
@@ -94,6 +105,8 @@ export function forecastCash(actuals: FinancialActuals, plan: OperatingPlan) {
     cash, rows, pendingCollectionsMinor: revenue.pendingCollectionsMinor,
     qualifications: [...cash.qualifications, ...revenue.qualifications, "payroll_and_expenses_prorated_by_calendar_days",
       "payroll_tax_on_salary_and_commissions_benefits_untaxed", "operating_costs_paid_in_month_incurred",
+      ...(plan.employees.some(item => "monthlyEmployerCostMinor" in item) ? ["loaded_employee_cost_components_unavailable"] : []),
+      ...(plan.aggregatePayroll ? ["aggregate_payroll_not_allocated_to_individual_employees"] : []),
       "financing_and_capital_spend_excluded_from_operating_burn", "operating_profit_excludes_depreciation_interest_and_income_tax",
       ...(plan.startDate > actuals.evaluatedAt.slice(0, 10) ? ["activity_between_cash_observation_and_plan_start_is_not_modeled"] : [])] };
 }

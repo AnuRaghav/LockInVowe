@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MemoryScope, PersistentMemory } from "@/lib/memory/types";
 import type { FinancialSession } from "@/lib/finance/session";
 import { createFinancialSession, FinancialDataUnavailable } from "@/lib/finance/session";
+import { isOnboardingCapability, type OnboardingCapability } from "@/lib/onboarding/capability";
 
 const isPersistentMemory = (value: unknown): value is PersistentMemory =>
   typeof (value as PersistentMemory | undefined)?.search === "function" &&
@@ -19,8 +20,8 @@ const isPersistentMemory = (value: unknown): value is PersistentMemory =>
  *
  * Two sorts of thing live here, and the distinction is worth keeping:
  *
- * - *Identity* (`companyId`, `threadId`): who this run is for. Grows with the
- *   product - userId, role, locale. Add fields here, never to a tool's
+ * - *Identity* (`companyId`, `founderId`, `threadId`): who this run is for.
+ *   Grows with the product - role, locale. Add fields here, never to a tool's
  *   argument schema.
  * - *Capabilities* (`persistentMemory`): handles a tool needs at call time.
  *   Injected so a run can be pointed at a different backend without any tool
@@ -31,6 +32,13 @@ export const samRuntimeContextSchema = z.object({
     .string()
     .min(1, "companyId is required for every Sam run.")
     .describe("The company every tool in this run reads and writes."),
+  founderId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "The person this run serves. Scopes founder profile and communication preferences, which are never read through companyId."
+    ),
   threadId: z
     .string()
     .min(1)
@@ -44,6 +52,10 @@ export const samRuntimeContextSchema = z.object({
     .describe(
       "Long-lived company knowledge the retrieval tools read. Defaults to the application's memory module."
     ),
+  onboarding: z
+    .custom<OnboardingCapability>(isOnboardingCapability)
+    .optional()
+    .describe("Trusted onboarding-session capability. Present only for onboarding runs; never supplied by the model."),
   financials: z.custom<FinancialSession>((value) =>
     typeof value?.companyId === "string" && typeof value?.read === "function"
   ).optional().describe("Trusted run-local Numerical Model capability; never supplied by the model."),

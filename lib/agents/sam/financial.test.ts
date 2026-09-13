@@ -20,7 +20,7 @@ const { runSamAgent } = await import("./agent");
 const companyId = "company-financial-test";
 const period = { start: "2026-08-01", endExclusive: "2026-09-01" };
 const contextBuilder = () => createSamContextBuilder({ persistentMemory: createSeededPersistentMemory(companyId),
-  threadMemory: new InMemoryThreadMemory(), loadBrief: async () => null });
+  threadMemory: new InMemoryThreadMemory(), loadBrief: async () => null, loadOperating: async () => null });
 
 describe("Numerical Model reaches Sam", () => {
   it("answers from the automatic baseline with no founder numbers or tool call", async () => {
@@ -59,7 +59,7 @@ describe("Numerical Model reaches Sam", () => {
       contextBuilder: { build: async () => { throw new Error("semantic unavailable"); } } });
     expect(result.degraded).toBe(true);
     expect(result.text).toContain("USD 8761.38");
-    expect(result.initialContext.memories).toEqual([]);
+    expect(result.initialContext.directory).toBeNull();
   });
   it("retains semantic context but discloses financial loading failures without leaking errors", async () => {
     createSamModel.mockReturnValue(new FakeToolCallingModel({ toolCalls: [[]] }));
@@ -68,7 +68,7 @@ describe("Numerical Model reaches Sam", () => {
     expect(result.ok).toBe(true);
     expect(result.degraded).toBe(true);
     expect(result.initialContext.numerical).toEqual({ status: "unavailable", reason: "source_unavailable" });
-    expect(result.initialContext.memories.length).toBeGreaterThan(0);
+    expect(result.initialContext.directory?.entries.length).toBeGreaterThan(0);
     expect(result.text).not.toContain("PRIVATE-SQL-OR-SECRET");
     expect(JSON.stringify(result.run)).not.toContain("PRIVATE-SQL-OR-SECRET");
   });

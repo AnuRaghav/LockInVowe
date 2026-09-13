@@ -7,12 +7,12 @@ import {
 } from "@/lib/semantic/types";
 import {
   ARCHIVE_STATUSES,
-  MAX_CREATES_PER_INTERACTION,
-  MAX_OPERATIONS_PER_INTERACTION,
+  DEFAULT_SEMANTIC_UPDATE_LIMITS,
   type AppliedSemanticChange,
   type RejectedSemanticOperation,
   type SemanticOperation,
   type SemanticProposal,
+  type SemanticUpdateLimits,
   type StoredSemanticInteraction,
 } from "@/lib/semantic/update/types";
 
@@ -39,8 +39,11 @@ import {
  * past them is refused wholesale rather than applied halfway.
  */
 
-/** Bounds, so a runaway generation cannot write a novel into a block. */
-const LIMITS = {
+/**
+ * Bounds, so a runaway generation cannot write a novel into a block. Exported
+ * with the helpers below so founder blocks are held to the same limits.
+ */
+export const SEMANTIC_TEXT_LIMITS = {
   title: 120,
   summary: 280,
   body: 4000,
@@ -49,15 +52,17 @@ const LIMITS = {
   labelLength: 40,
 } as const;
 
-const clampText = (value: string, max: number): string => {
+const LIMITS = SEMANTIC_TEXT_LIMITS;
+
+export const clampText = (value: string, max: number): string => {
   const trimmed = value.trim();
   return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1).trimEnd()}…`;
 };
 
-const clampUnit = (value: number | undefined): number | undefined =>
+export const clampUnit = (value: number | undefined): number | undefined =>
   value === undefined ? undefined : Math.min(1, Math.max(0, value));
 
-const normalizeLabels = (labels: string[] | undefined): string[] | undefined => {
+export const normalizeLabels = (labels: string[] | undefined): string[] | undefined => {
   if (!labels) return undefined;
 
   const cleaned = labels
@@ -98,6 +103,8 @@ export interface ApplyProposalInput {
   proposal: SemanticProposal;
   /** The cause. Its id is what every written revision points back at. */
   interaction: StoredSemanticInteraction;
+  /** Defaults to {@link DEFAULT_SEMANTIC_UPDATE_LIMITS}. */
+  limits?: SemanticUpdateLimits;
 }
 
 export interface ApplyProposalResult {
@@ -142,6 +149,7 @@ export const applySemanticProposal = async ({
   store,
   proposal,
   interaction,
+  limits = DEFAULT_SEMANTIC_UPDATE_LIMITS,
 }: ApplyProposalInput): Promise<ApplyProposalResult> => {
   const applied: AppliedSemanticChange[] = [];
   const rejected: RejectedSemanticOperation[] = [];
@@ -157,14 +165,14 @@ export const applySemanticProposal = async ({
   // Caps are checked against what the model actually asked for, before any
   // write, so an over-eager proposal is refused whole rather than truncated
   // into a state nobody proposed.
-  if (operations.length > MAX_OPERATIONS_PER_INTERACTION) {
+  if (operations.length > limits.maxOperations) {
     return {
       applied,
       rejected: operations.map((operation) =>
         reject(
           operation,
           "too_many_operations",
-          `${operations.length} operations proposed; at most ${MAX_OPERATIONS_PER_INTERACTION} are allowed for one interaction.`
+          `${operations.length} operations proposed; at most ${limits.maxOperations} are allowed for one interaction.`
         )
       ),
     };
@@ -241,12 +249,12 @@ export const applySemanticProposal = async ({
 
     if (effectiveOp === "create") {
       creates += 1;
-      if (creates > MAX_CREATES_PER_INTERACTION) {
+      if (creates > limits.maxCreates) {
         rejected.push(
           reject(
             operation,
             "too_many_creates",
-            `At most ${MAX_CREATES_PER_INTERACTION} new topics may come from one interaction; consolidate into an existing one instead.`
+            `At most ${limits.maxCreates} new topics may come from one interaction; consolidate into an existing one instead.`
           )
         );
         continue;

@@ -6,7 +6,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { getUser } }),
 }));
 
-const { resolveCompanyContext, UnauthenticatedError } = await import("@/lib/company/context");
+const { resolveCompanyContext, resolveAuthenticatedCompanyContext, UnauthenticatedError } = await import("@/lib/company/context");
 
 const request = (headers: Record<string, string> = {}) =>
   new Request("http://localhost/api/chat", { method: "POST", headers });
@@ -24,19 +24,29 @@ describe("resolveCompanyContext", () => {
     );
   });
 
-  it("resolves to the authenticated founder's user id", async () => {
+  it("resolves company and founder to the authenticated user's id", async () => {
     getUser.mockResolvedValue({ data: { user: { id: "user_123" } } });
 
     await expect(resolveCompanyContext(request())).resolves.toEqual({
       companyId: "user_123",
+      founderId: "user_123",
     });
   });
 
   it("honours the dev-only override header outside production, without touching auth", async () => {
     await expect(
       resolveCompanyContext(request({ "x-dev-company-id": "company_header" }))
-    ).resolves.toEqual({ companyId: "company_header" });
+    ).resolves.toEqual({ companyId: "company_header", founderId: "company_header" });
 
     expect(getUser).not.toHaveBeenCalled();
+  });
+
+  it("always uses the authenticated user for company-scoped planning", async () => {
+    getUser.mockResolvedValue({ data: { user: { id: "authenticated-company" } } });
+
+    await expect(resolveAuthenticatedCompanyContext()).resolves.toEqual({
+      companyId: "authenticated-company",
+      founderId: "authenticated-company",
+    });
   });
 });
