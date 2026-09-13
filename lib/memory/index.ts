@@ -1,13 +1,16 @@
 import { InMemoryThreadMemory } from "@/lib/memory/in-memory";
 import { createSeededPersistentMemory } from "@/lib/memory/seed";
 import type { PersistentMemory, ThreadMemory } from "@/lib/memory/types";
+import { createSemanticPersistentMemory } from "@/lib/semantic/memory-adapter";
+import { hasServiceCredentials } from "@/lib/supabase/service";
 
 /**
  * Memory module.
  *
  * The rest of the app depends on the interfaces in `types.ts`; only this file
- * decides which implementation is wired in. Swapping the stub for a real
- * backend is a change here and nowhere else.
+ * decides which implementation is wired in. That promise is now being cashed:
+ * persistent memory is the durable Semantic Company Model, reached through an
+ * adapter, and nothing that reads memory had to change to get it.
  */
 export {
   InMemoryPersistentMemory,
@@ -16,9 +19,12 @@ export {
 export { SEEDED_MEMORIES, createSeededPersistentMemory } from "@/lib/memory/seed";
 export {
   MEMORY_KINDS,
+  supportsMemoryHistory,
+  type MemoryHistory,
   type MemoryKind,
   type MemoryQuery,
   type MemoryRecord,
+  type MemoryRevision,
   type MemoryScope,
   type PersistentMemory,
   type ThreadMemory,
@@ -30,14 +36,20 @@ let persistentMemory: PersistentMemory | null = null;
 let threadMemory: ThreadMemory | null = null;
 
 /**
- * The application's persistent memory.
+ * The application's persistent memory: durable semantic state.
  *
- * TEMPORARY: an in-process stub with seeded knowledge, so the harness runs
- * before any storage decision is made.
+ * Falls back to the in-process seeded stub when Supabase credentials are
+ * absent, which keeps unit tests and `next build` working without a database.
+ * The fallback is a development convenience and nothing more - it has no
+ * revision history, so `supportsMemoryHistory()` is false against it and
+ * anything asking "how has this changed?" correctly gets nothing rather than a
+ * fabricated answer.
  */
 export const getPersistentMemory = (): PersistentMemory =>
-  (persistentMemory ??= createSeededPersistentMemory());
+  (persistentMemory ??= hasServiceCredentials()
+    ? createSemanticPersistentMemory()
+    : createSeededPersistentMemory());
 
-/** The application's working memory. Also process-local for now. */
+/** The application's working memory. Still process-local, by design. */
 export const getThreadMemory = (): ThreadMemory =>
   (threadMemory ??= new InMemoryThreadMemory());

@@ -68,6 +68,14 @@ export interface SamContextBudget {
   systemPromptChars: number;
   /** Characters contributed by retrieved company context alone. */
   initialContextChars: number;
+  /**
+   * Characters the company brief contributes.
+   *
+   * Tracked separately because it is the only part of the context paid for on
+   * *every* run whether or not it is used. If the standing cost of a
+   * conversation starts climbing, this is the number that shows it.
+   */
+  briefChars: number;
   memoryCount: number;
   threadNoteCount: number;
   /** Rough, provider-independent estimate: characters / 4. */

@@ -9,6 +9,261 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      company_briefs: {
+        Row: {
+          body: string
+          company_id: string
+          fingerprint: string
+          generated_at: string
+          generator: Json
+          id: string
+          sections: Json
+          source_block_ids: string[]
+          version: number
+        }
+        Insert: {
+          body: string
+          company_id: string
+          fingerprint: string
+          generated_at?: string
+          generator?: Json
+          id?: string
+          sections?: Json
+          source_block_ids?: string[]
+          version: number
+        }
+        Update: {
+          body?: string
+          company_id?: string
+          fingerprint?: string
+          generated_at?: string
+          generator?: Json
+          id?: string
+          sections?: Json
+          source_block_ids?: string[]
+          version?: number
+        }
+        Relationships: []
+      }
+      semantic_block_revisions: {
+        Row: {
+          as_of: string | null
+          attributes: Json
+          block_id: string
+          body: string
+          change_kind: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note: string | null
+          company_id: string
+          confidence: number | null
+          context_policy: Database["public"]["Enums"]["semantic_context_policy"]
+          id: string
+          labels: string[]
+          provenance: Json
+          recorded_at: string
+          revision: number
+          salience: number
+          source_interaction_id: string | null
+          status: Database["public"]["Enums"]["semantic_block_status"]
+          summary: string | null
+          superseded_at: string | null
+          supersedes_revision_id: string | null
+          title: string
+        }
+        Insert: {
+          as_of?: string | null
+          attributes?: Json
+          block_id: string
+          body: string
+          change_kind: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note?: string | null
+          company_id: string
+          confidence?: number | null
+          context_policy: Database["public"]["Enums"]["semantic_context_policy"]
+          id?: string
+          labels?: string[]
+          provenance?: Json
+          recorded_at?: string
+          revision: number
+          salience: number
+          source_interaction_id?: string | null
+          status: Database["public"]["Enums"]["semantic_block_status"]
+          summary?: string | null
+          superseded_at?: string | null
+          supersedes_revision_id?: string | null
+          title: string
+        }
+        Update: {
+          as_of?: string | null
+          attributes?: Json
+          block_id?: string
+          body?: string
+          change_kind?: Database["public"]["Enums"]["semantic_change_kind"]
+          change_note?: string | null
+          company_id?: string
+          confidence?: number | null
+          context_policy?: Database["public"]["Enums"]["semantic_context_policy"]
+          id?: string
+          labels?: string[]
+          provenance?: Json
+          recorded_at?: string
+          revision?: number
+          salience?: number
+          source_interaction_id?: string | null
+          status?: Database["public"]["Enums"]["semantic_block_status"]
+          summary?: string | null
+          superseded_at?: string | null
+          supersedes_revision_id?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "semantic_block_revisions_block_id_company_id_fkey"
+            columns: ["block_id", "company_id"]
+            isOneToOne: false
+            referencedRelation: "semantic_blocks"
+            referencedColumns: ["id", "company_id"]
+          },
+          {
+            foreignKeyName: "semantic_block_revisions_source_interaction_id_fkey"
+            columns: ["source_interaction_id"]
+            isOneToOne: false
+            referencedRelation: "semantic_interactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "semantic_block_revisions_supersedes_revision_id_fkey"
+            columns: ["supersedes_revision_id"]
+            isOneToOne: false
+            referencedRelation: "semantic_block_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      semantic_blocks: {
+        Row: {
+          as_of: string | null
+          attributes: Json
+          body: string
+          company_id: string
+          confidence: number | null
+          context_policy: Database["public"]["Enums"]["semantic_context_policy"]
+          created_at: string
+          current_revision_id: string | null
+          id: string
+          key: string
+          labels: string[]
+          provenance: Json
+          revision: number
+          salience: number
+          search: unknown
+          status: Database["public"]["Enums"]["semantic_block_status"]
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          as_of?: string | null
+          attributes?: Json
+          body: string
+          company_id: string
+          confidence?: number | null
+          context_policy?: Database["public"]["Enums"]["semantic_context_policy"]
+          created_at?: string
+          current_revision_id?: string | null
+          id?: string
+          key: string
+          labels?: string[]
+          provenance?: Json
+          revision?: number
+          salience?: number
+          search?: unknown
+          status?: Database["public"]["Enums"]["semantic_block_status"]
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          as_of?: string | null
+          attributes?: Json
+          body?: string
+          company_id?: string
+          confidence?: number | null
+          context_policy?: Database["public"]["Enums"]["semantic_context_policy"]
+          created_at?: string
+          current_revision_id?: string | null
+          id?: string
+          key?: string
+          labels?: string[]
+          provenance?: Json
+          revision?: number
+          salience?: number
+          search?: unknown
+          status?: Database["public"]["Enums"]["semantic_block_status"]
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "semantic_blocks_current_revision_fkey"
+            columns: ["current_revision_id"]
+            isOneToOne: false
+            referencedRelation: "semantic_block_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      semantic_interactions: {
+        Row: {
+          company_id: string
+          created_at: string
+          error: string | null
+          external_key: string
+          id: string
+          occurred_at: string
+          outcome: Json | null
+          processed_at: string | null
+          proposal: Json | null
+          run_id: string | null
+          source: string
+          status: Database["public"]["Enums"]["semantic_interaction_status"]
+          thread_id: string | null
+          transcript: Json
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          error?: string | null
+          external_key: string
+          id?: string
+          occurred_at?: string
+          outcome?: Json | null
+          processed_at?: string | null
+          proposal?: Json | null
+          run_id?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["semantic_interaction_status"]
+          thread_id?: string | null
+          transcript?: Json
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          error?: string | null
+          external_key?: string
+          id?: string
+          occurred_at?: string
+          outcome?: Json | null
+          processed_at?: string | null
+          proposal?: Json | null
+          run_id?: string | null
+          source?: string
+          status?: Database["public"]["Enums"]["semantic_interaction_status"]
+          thread_id?: string | null
+          transcript?: Json
+        }
+        Relationships: []
+      }
       source_accounts: {
         Row: {
           company_id: string
@@ -380,9 +635,92 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      semantic_block_document: {
+        Args: {
+          p_body: string
+          p_labels: string[]
+          p_summary: string
+          p_title: string
+        }
+        Returns: unknown
+      }
+      semantic_block_revise: {
+        Args: {
+          p_as_of?: string
+          p_attributes?: Json
+          p_body: string
+          p_change_kind?: Database["public"]["Enums"]["semantic_change_kind"]
+          p_change_note?: string
+          p_company_id: string
+          p_confidence?: number
+          p_context_policy?: Database["public"]["Enums"]["semantic_context_policy"]
+          p_key: string
+          p_labels?: string[]
+          p_provenance?: Json
+          p_recorded_at?: string
+          p_salience?: number
+          p_status?: Database["public"]["Enums"]["semantic_block_status"]
+          p_summary?: string
+          p_title: string
+        }
+        Returns: {
+          block_id: string
+          created: boolean
+          revision: number
+          revision_id: string
+        }[]
+      }
+      semantic_block_search: {
+        Args: {
+          p_company_id: string
+          p_labels?: string[]
+          p_limit?: number
+          p_statuses?: Database["public"]["Enums"]["semantic_block_status"][]
+          p_text?: string
+        }
+        Returns: {
+          as_of: string | null
+          attributes: Json
+          body: string
+          company_id: string
+          confidence: number | null
+          context_policy: Database["public"]["Enums"]["semantic_context_policy"]
+          created_at: string
+          current_revision_id: string | null
+          id: string
+          key: string
+          labels: string[]
+          provenance: Json
+          revision: number
+          salience: number
+          search: unknown
+          status: Database["public"]["Enums"]["semantic_block_status"]
+          summary: string | null
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "semantic_blocks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
+      semantic_block_status: "active" | "dormant" | "resolved" | "archived"
+      semantic_change_kind:
+        | "created"
+        | "revised"
+        | "corrected"
+        | "status_changed"
+        | "archived"
+      semantic_context_policy: "always" | "when_relevant" | "background"
+      semantic_interaction_status:
+        | "pending"
+        | "processed"
+        | "skipped"
+        | "failed"
       source_account_kind:
         | "checking"
         | "savings"
@@ -522,6 +860,21 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      semantic_block_status: ["active", "dormant", "resolved", "archived"],
+      semantic_change_kind: [
+        "created",
+        "revised",
+        "corrected",
+        "status_changed",
+        "archived",
+      ],
+      semantic_context_policy: ["always", "when_relevant", "background"],
+      semantic_interaction_status: [
+        "pending",
+        "processed",
+        "skipped",
+        "failed",
+      ],
       source_account_kind: [
         "checking",
         "savings",

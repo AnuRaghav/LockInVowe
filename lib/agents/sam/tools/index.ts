@@ -1,7 +1,11 @@
 import type { ClientTool } from "@langchain/core/tools";
 
 import { calculateRunwayTool } from "@/lib/agents/sam/tools/calculate-runway";
-import { getMemoryTool, searchMemoryTool } from "@/lib/agents/sam/tools/memory";
+import {
+  getMemoryHistoryTool,
+  getMemoryTool,
+  searchMemoryTool,
+} from "@/lib/agents/sam/tools/memory";
 
 /**
  * Sam's tool registry.
@@ -15,6 +19,12 @@ export const SAM_TOOLS: ClientTool[] = [
   calculateRunwayTool,
   searchMemoryTool,
   getMemoryTool,
+  getMemoryHistoryTool,
 ];
 
-export { calculateRunwayTool, getMemoryTool, searchMemoryTool };
+export {
+  calculateRunwayTool,
+  getMemoryHistoryTool,
+  getMemoryTool,
+  searchMemoryTool,
+};

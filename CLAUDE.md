@@ -52,10 +52,24 @@
 - ✅ Environment variables configured (all 3 environments)
 - ✅ Local development ready
 - ✅ Source Layer: provider-neutral schema + Plaid and Rho adapters (`lib/source/`)
+- ✅ Semantic Company Model: durable semantic blocks + revision history, the
+  semantic updater, and the company brief (`lib/semantic/`)
 - ❌ Numerical Model (not started)
 - ❌ Onboarding flow (not started)
 - ❌ Forecasting engine (not started)
 - ❌ Agent implementation (not started)
+
+### The two memories, and what each is for
+
+| | Source Layer (`lib/source/`) | Semantic Model (`lib/semantic/`) |
+|---|---|---|
+| Answers | "What actually happened?" | "What does this company believe, plan, and intend?" |
+| Comes from | Bank and card providers | People saying things |
+| Shape | Normalized ledger rows | Natural-language blocks, one per topic |
+| Changes by | Appending observations | Revising a topic, keeping its history |
+
+Neither derives the other. A founder's stated plan and their bank balance can
+disagree, and Sam should notice rather than average them.
 
 ---
 

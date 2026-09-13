@@ -24,3 +24,12 @@ export const createServiceClient = () => {
     auth: { persistSession: false },
   });
 };
+
+/**
+ * Whether server-side Supabase access is configured in this process.
+ *
+ * Lets a caller choose a durable implementation when a database is reachable
+ * and a local one when it is not, without constructing a client to find out.
+ */
+export const hasServiceCredentials = (): boolean =>
+  Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
