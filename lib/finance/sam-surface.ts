@@ -110,7 +110,7 @@ export function financialSnapshot(actuals: FinancialActuals) {
     caveats: ["observed_linked_accounts_not_complete_company_coverage", "recorded_cash_movement_not_operating_burn_or_balance_change",
       "balance_value_change_time_not_last_check", "no_fx_conversion", "no_future_commitments_modeled",
       "Rho_lifecycle_changes_outside_14_day_lookback_may_be_missing", "history_completeness_unknown", "source_currency_may_default_to_USD"],
-    more: "Use financial_position for a currency, financial_cash_flow for completed-day periods, financial_burn_runway for burn/runway basis, compare_financial_periods for change, explain_financial_number for evidence.",
+    more: "Use actuals tools for observed position/history and evidence. For future questions, retrieve relevant plans/constraints, then use forecast_cash, simulate_financial_scenario, or compare_financial_scenarios with explicit basis-labelled assumptions; connected starting cash cannot be overridden.",
   };
 }
 export type FinancialSnapshot = ReturnType<typeof financialSnapshot> | { status: "unavailable"; reason: string };

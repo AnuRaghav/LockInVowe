@@ -6,10 +6,12 @@ import { createFinancialSession } from "@/lib/finance/session";
 import { deriveFinancialActuals } from "@/lib/finance/actuals";
 import { financialSnapshot, loadFinancialSnapshot } from "@/lib/finance/sam-surface";
 import { createSamContextBuilder } from "./context-builder";
-import { InMemoryThreadMemory } from "@/lib/memory/in-memory";
+import { InMemoryPersistentMemory, InMemoryThreadMemory } from "@/lib/memory/in-memory";
 import { createSeededPersistentMemory } from "@/lib/memory/seed";
 import { financialPositionSchema, financialCashFlowSchema, financialBurnRunwaySchema, financialComparisonSchema,
-  financialTraceSchema, financialPositionTool, financialCashFlowTool, financialBurnRunwayTool, financialComparisonTool, financialTraceTool } from "./tools/financial";
+  financialTraceSchema, forecastCashSchema, simulateFinancialScenarioSchema, compareFinancialScenariosSchema,
+  financialPositionTool, financialCashFlowTool, financialBurnRunwayTool, financialComparisonTool, financialTraceTool,
+  forecastCashTool, simulateFinancialScenarioTool, compareFinancialScenariosTool } from "./tools/financial";
 import { SAM_TOOLS } from "./tools";
 import { SAM_TOOL_POLICIES } from "./tools/policy";
 const createSamModel = vi.fn();
@@ -86,16 +88,23 @@ describe("financial capability contracts", () => {
   it("removes the old runway tool and excludes amounts/company identity from every financial schema", () => {
     expect(SAM_TOOLS.map(t => t.name)).not.toContain("calculate_runway");
     expect(SAM_TOOL_POLICIES).not.toHaveProperty("calculate_runway");
+    expect(SAM_TOOLS.map(t => t.name)).toEqual(expect.arrayContaining([
+      "forecast_cash", "simulate_financial_scenario", "compare_financial_scenarios",
+    ]));
+    expect(SAM_TOOL_POLICIES.forecast_cash.kind).toBe("calculation");
     const cases = [
       [financialPositionSchema, { currency: "USD" }],
       [financialCashFlowSchema, { currency: "USD", period }],
       [financialBurnRunwaySchema, { currency: "USD" }],
       [financialComparisonSchema, { currency: "USD", current: period, prior: period }],
       [financialTraceSchema, { currency: "USD", metric: "cash" }],
+      [forecastCashSchema, { currency: "USD", startDate: "2026-10-01", horizon: { periods: 12, granularity: "month" }, baseline: { method: "none" } }],
+      [simulateFinancialScenarioSchema, { currency: "USD", startDate: "2026-10-01", horizon: { periods: 12, granularity: "month" }, baseline: { method: "none" }, scenario: { name: "plan" } }],
+      [compareFinancialScenariosSchema, { currency: "USD", startDate: "2026-10-01", horizon: { periods: 12, granularity: "month" }, baseline: { method: "none" }, scenarios: [{ name: "plan" }] }],
     ] as const;
     for (const [schema, args] of cases) {
       expect(schema.safeParse(args).success).toBe(true);
-      for (const field of ["companyId", "cashOnHandUsd", "monthlyRevenueUsd", "monthlyExpensesUsd", "burnMinorPerMonth"])
+      for (const field of ["companyId", "startingCashMinor", "cashOnHandUsd", "monthlyRevenueUsd", "monthlyExpensesUsd", "burnMinorPerMonth"])
         expect(schema.safeParse({ ...args, [field]: 100 }).success).toBe(false);
     }
   });
@@ -162,6 +171,70 @@ describe("financial capability contracts", () => {
     expect(JSON.stringify(snapshot).length).toBeLessThan(4000);
     expect(JSON.stringify(snapshot)).not.toContain("raw-debit");
   });
+  it("supports a scripted multi-step financial decision workflow with deterministic scenario arithmetic", async () => {
+    const memory = new InMemoryPersistentMemory({ [companyId]: [
+      { id: "runway-policy", kind: "constraint", content: "Maintain at least 12 months of runway.", labels: ["runway"], importance: 1 },
+      { id: "engineering-plan", kind: "plan", content: "Hire two engineers on November 1 at an assumed fully loaded cash cost of $17k per month each.", labels: ["hiring"], importance: 1 },
+      { id: "planning-baseline", kind: "assumption", content: "For this management scenario, assume baseline cash outflows of $1,000 per month and no inflows.", labels: ["forecast"], importance: 1 },
+    ] });
+    const scenarioArgs = {
+      currency: "USD", startDate: "2026-10-01", horizon: { periods: 12, granularity: "month" as const },
+      baseline: { method: "explicit_periodic" as const, inflowsMinor: 0, outflowsMinor: 100_000,
+        basis: { kind: "management_assumption" as const, label: "Management planning baseline", reference: "financial-posture" } },
+      thresholds: { runwayMonths: 12 },
+      scenario: { name: "two planned engineers", recurringDeltas: [{ id: "two-engineers", label: "Two engineers at 17k each",
+        startDate: "2026-11-01", cadence: "month" as const, driver: "outflow" as const, change: "increase" as const,
+        amountMinor: 3_400_000, basis: { kind: "management_assumption" as const, label: "Current hiring plan", reference: "engineering-plan" } }] },
+      limit: 6,
+    };
+    createSamModel.mockReturnValue(new FakeToolCallingModel({ toolCalls: [
+      [{ name: "financial_position", args: { currency: "USD" }, id: "position" }],
+      [{ name: "search_memory", args: { query: "planned engineers cost and runway floor" }, id: "memory" }],
+      [{ name: "simulate_financial_scenario", args: scenarioArgs, id: "scenario" }],
+      [],
+    ] }));
+    const result = await runSamAgent({ messages: "Can we afford the two planned engineers while maintaining our runway floor?",
+      contextBuilder: createSamContextBuilder({ persistentMemory: memory, threadMemory: new InMemoryThreadMemory(), loadBrief: async () => null }),
+      context: { companyId, financials: testFinancialSession(companyId), persistentMemory: memory } });
+    expect(result.toolCalls.map(call => call.name)).toEqual(["financial_position", "search_memory", "simulate_financial_scenario"]);
+    const payloads = result.messages.filter((message): message is ToolMessage => message instanceof ToolMessage).map(message => JSON.parse(message.text));
+    expect(payloads[1]).toMatchObject({ ok: true, data: { topics: expect.any(Array) } });
+    expect(payloads[1].data.topics.map((topic: { content: string }) => topic.content).join(" ")).toContain("$17k per month each");
+    expect(payloads[2]).toMatchObject({ ok: true, data: {
+      name: "two planned engineers",
+      baseline: { endingCash: { minor: -323_862 } },
+      scenario: { endingCash: { minor: -37_723_862 }, zeroCash: { status: "crossed" }, runwayThreshold: { status: "crossed", months: 12 } },
+      difference: { endingCash: { minor: -37_400_000 }, cumulativeIncrementalCashImpact: { minor: -37_400_000 } },
+    } });
+    expect(result.run.toolCalls.map(call => call.kind)).toEqual(["read_only", "read_only", "calculation"]);
+  });
+
+  it("keeps normal forecast tool results bounded while preserving assumptions and qualifications", async () => {
+    const context = { companyId, financials: testFinancialSession(companyId) };
+    const core = { currency: "USD", startDate: "2026-10-01", horizon: { periods: 12, granularity: "month" as const },
+      baseline: { method: "explicit_periodic" as const, inflowsMinor: 0, outflowsMinor: 50_000,
+        basis: { kind: "management_assumption" as const, label: "Planning baseline" } },
+      assumptions: [{ id: "scope", description: "No unlisted future commitments are modeled",
+        basis: { kind: "management_assumption" as const, label: "Scenario scope" } }],
+    };
+    const scenario = { name: "purchase", events: [{ id: "purchase", label: "Proposed purchase", date: "2026-11-15",
+      driver: "outflow" as const, change: "increase" as const, amountMinor: 100_000,
+      basis: { kind: "scenario_override" as const, label: "Founder proposal" } }] };
+    const outputs = await Promise.all([
+      forecastCashTool.invoke(core, { context }),
+      simulateFinancialScenarioTool.invoke({ ...core, scenario, limit: 6 }, { context }),
+      compareFinancialScenariosTool.invoke({ ...core, scenarios: [scenario, { name: "no purchase" }] }, { context }),
+    ]);
+    for (const output of outputs) {
+      expect(output.length).toBeLessThan(8000);
+      expect(output).toContain("forecast_is_conditional_not_observed_actual");
+      expect(output).toContain("management_assumption");
+    }
+    const forecast = JSON.parse(outputs[0]);
+    expect(forecast.data.startingPosition.value.minor).toBe(876_138);
+    expect(forecast.data.assumptions[0].description).toContain("unlisted future commitments");
+  });
+
   it("bounds multi-currency baseline and provides catalog discovery for omitted currencies", async () => {
     const source = financialSourceFixture(companyId);
     for (const currency of ["EUR", "GBP", "JPY"]) {

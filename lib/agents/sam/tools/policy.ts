@@ -85,6 +85,9 @@ export const SAM_TOOL_POLICIES: Readonly<Record<string, SamToolPolicy>> = {
     } },
   compare_financial_periods: { kind: "read_only", retryable: true, requiresApproval: false, label: "Comparing financial periods" },
   explain_financial_number: { kind: "read_only", retryable: true, requiresApproval: false, label: "Tracing financial evidence" },
+  forecast_cash: { kind: "calculation", retryable: true, requiresApproval: false, label: "Forecasting conditional cash trajectory" },
+  simulate_financial_scenario: { kind: "calculation", retryable: true, requiresApproval: false, label: "Simulating a financial scenario" },
+  compare_financial_scenarios: { kind: "calculation", retryable: true, requiresApproval: false, label: "Comparing financial scenarios" },
   search_memory: {
     kind: "read_only",
     retryable: true,
