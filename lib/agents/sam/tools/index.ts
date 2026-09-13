@@ -1,7 +1,8 @@
 import type { ClientTool } from "@langchain/core/tools";
 
 import { financialPositionTool, financialCashFlowTool, financialBurnRunwayTool,
-  financialComparisonTool, financialTraceTool } from "@/lib/agents/sam/tools/financial";
+  financialComparisonTool, financialTraceTool, forecastCashTool,
+  simulateFinancialScenarioTool, compareFinancialScenariosTool } from "@/lib/agents/sam/tools/financial";
 import {
   getMemoryHistoryTool,
   getMemoryTool,
@@ -19,6 +20,7 @@ import {
 export const SAM_TOOLS: ClientTool[] = [
   financialPositionTool, financialCashFlowTool, financialBurnRunwayTool,
   financialComparisonTool, financialTraceTool,
+  forecastCashTool, simulateFinancialScenarioTool, compareFinancialScenariosTool,
   searchMemoryTool,
   getMemoryTool,
   getMemoryHistoryTool,
@@ -27,6 +29,7 @@ export const SAM_TOOLS: ClientTool[] = [
 export {
   financialPositionTool, financialCashFlowTool, financialBurnRunwayTool,
   financialComparisonTool, financialTraceTool,
+  forecastCashTool, simulateFinancialScenarioTool, compareFinancialScenariosTool,
   getMemoryHistoryTool,
   getMemoryTool,
   searchMemoryTool,
