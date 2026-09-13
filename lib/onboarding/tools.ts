@@ -28,7 +28,10 @@ import {
   sectionById,
   sectionEntryKey,
   unresolvedCoreQuestions,
+  type ChecklistView,
+  type OnboardingQuestion,
 } from "@/lib/onboarding/checklist";
+import type { OnboardingCapability } from "@/lib/onboarding/capability";
 import { CHOICE_QUESTION_IDS, ONBOARDING_CHOICES } from "@/lib/onboarding/choices";
 import type { OnboardingOpenItem } from "@/lib/onboarding/sessions";
 
@@ -76,6 +79,23 @@ const requireQuestion = (id: string) => {
   return question;
 };
 
+/**
+ * A question can only be marked answered once its section has actually been
+ * reached with the founder: complete, or current when this turn began. This
+ * stops Sam from closing a section and marking the next one's questions done
+ * before asking any of them.
+ */
+const assertAnswerable = (question: OnboardingQuestion, capability: OnboardingCapability, view: ChecklistView) => {
+  const current = currentSection(view);
+  const answerable = capability.answerableSections ?? [...view.completedSections, ...(current ? [current.id] : [])];
+
+  if (!answerable.includes(question.sectionId)) {
+    throw new Error(
+      `"${question.id}" belongs to a section you have not asked the founder about yet. Ask first, then mark it answered. You can still record a value they volunteered without a questionId, or mark it deferred.`
+    );
+  }
+};
+
 /** Keys the interview may write. Cash, payroll, and the team come from connected data. */
 export const ONBOARDING_ASSUMPTION_KEYS = [
   ASSUMPTION_KEYS.mrrUsd,
@@ -102,11 +122,12 @@ const RECORD_ASSUMPTION = "record_assumption";
 export const recordAssumptionTool = tool(
   async (input, runtime: Runtime) =>
     runTool(async () => {
-      const { identity, capability } = await onboardingRun(runtime, RECORD_ASSUMPTION);
+      const { identity, capability, session } = await onboardingRun(runtime, RECORD_ASSUMPTION);
       const question = input.questionId ? requireQuestion(input.questionId) : undefined;
       if (question && sectionById(question.sectionId)?.sensitive) {
         throw new Error("Personal answers are never recorded as company assumptions.");
       }
+      if (question) assertAnswerable(question, capability, readChecklist(session.checklist));
 
       const value = parseAssumptionValue(input.key, input.value);
       await capability.assumptions.set(identity.companyId, input.key, value);
@@ -142,11 +163,12 @@ const RECORD_COMPANY_PROFILE = "record_company_profile";
 export const recordCompanyProfileTool = tool(
   async (input, runtime: Runtime) =>
     runTool(async () => {
-      const { identity, capability } = await onboardingRun(runtime, RECORD_COMPANY_PROFILE);
+      const { identity, capability, session } = await onboardingRun(runtime, RECORD_COMPANY_PROFILE);
       if (input.name === undefined && input.description === undefined) {
         throw new Error("Give a name, a description, or both.");
       }
       const question = input.questionId ? requireQuestion(input.questionId) : undefined;
+      if (question) assertAnswerable(question, capability, readChecklist(session.checklist));
 
       await capability.companies.saveProfile(identity.companyId, {
         name: input.name,
@@ -183,7 +205,7 @@ const RECORD_FOUNDER_PREFERENCE = "record_founder_preference";
 export const recordFounderPreferenceTool = tool(
   async (input, runtime: Runtime) =>
     runTool(async () => {
-      const { identity, capability } = await onboardingRun(runtime, RECORD_FOUNDER_PREFERENCE);
+      const { identity, capability, session } = await onboardingRun(runtime, RECORD_FOUNDER_PREFERENCE);
       const patch = contractPatchSchema.parse(input.patch);
 
       if (input.basis === "inferred") {
@@ -196,6 +218,7 @@ export const recordFounderPreferenceTool = tool(
       }
 
       const question = input.questionId ? requireQuestion(input.questionId) : undefined;
+      if (question) assertAnswerable(question, capability, readChecklist(session.checklist));
 
       await capability.contracts.revise(
         { founderId: identity.founderId },
@@ -257,6 +280,7 @@ export const markQuestionTool = tool(
         if (personal.length > 0 && !optedIn) {
           throw new Error("Ask whether the founder wants to answer personal questions before marking any answered.");
         }
+        questions.forEach((question) => assertAnswerable(question, capability, view));
       }
 
       const at = now();
@@ -346,7 +370,7 @@ export const presentChoicesTool = tool(
   {
     name: PRESENT_CHOICES,
     description:
-      "Show the founder quick-reply options for the question you are asking in this reply. Only for these questions, and only alongside asking it. The founder can still answer in their own words.",
+      "Show the founder quick-reply options for the question you are about to ask. Call it before writing the question, and only for these questions. The founder can still answer in their own words.",
     schema: z.object({ questionId: z.enum(CHOICE_QUESTION_IDS) }).strict(),
   }
 );

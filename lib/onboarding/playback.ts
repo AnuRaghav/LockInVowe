@@ -21,7 +21,15 @@ import {
 } from "@/lib/founder/contract";
 import { createCommunicationContractStore, createFounderBlockStore } from "@/lib/founder/store";
 import type { FounderBlock, FounderBlockStore } from "@/lib/founder/types";
-import { ONBOARDING_QUESTIONS, currentSection, readChecklist } from "@/lib/onboarding/checklist";
+import {
+  ONBOARDING_QUESTIONS,
+  ONBOARDING_SECTIONS,
+  currentSection,
+  extractionEntryKey,
+  readChecklist,
+  type OnboardingSectionId,
+} from "@/lib/onboarding/checklist";
+import { extractSection, type ExtractionDeps, type ExtractionResult } from "@/lib/onboarding/extract";
 import {
   createOnboardingSessionStore,
   type OnboardingOpenItem,
@@ -67,7 +75,7 @@ export interface OnboardingPlayback {
   readyToComplete: boolean;
 }
 
-export interface PlaybackDeps {
+export interface PlaybackDeps extends ExtractionDeps {
   semanticStore?: SemanticBlockStore;
   founderBlocks?: FounderBlockStore;
   contracts?: CommunicationContractStore;
@@ -312,5 +320,69 @@ export const completeOnboarding = async (
     sessionId: finished.id,
     completedAt: finished.completedAt ?? at,
     openItems: Object.keys(finished.openItems).length,
+  };
+};
+
+export interface SkippedOnboarding extends CompletedOnboarding {
+  /** Sections already talked about, consolidated before skipping. */
+  extractions: ExtractionResult[];
+}
+
+/**
+ * Skips the rest of the interview - or all of it - and lets Sam learn in
+ * conversation instead.
+ *
+ * Nothing already said is lost: any section with conversation that has not
+ * been consolidated yet is consolidated now, even if it was not finished.
+ * Every question without an answer becomes an open item, deferred, for Sam to
+ * raise when it matters. Skipping is not declining, so personal questions are
+ * deferred too; the opt-in still applies whenever Sam gets to them.
+ */
+export const skipOnboarding = async (
+  identity: OnboardingIdentity,
+  deps: PlaybackDeps = {}
+): Promise<SkippedOnboarding> => {
+  const d = resolve(deps);
+  const session = await d.sessions.start(identity);
+  const view = readChecklist(session.checklist);
+  const at = d.now().toISOString();
+
+  const extractions: ExtractionResult[] = [];
+  for (const section of ONBOARDING_SECTIONS) {
+    if (section.sensitive || view.extractedSections.includes(section.id)) continue;
+    if (!session.transcript.some((turn) => turn.sectionId === section.id && "text" in turn)) continue;
+
+    extractions.push(
+      await extractSection({ identity, sessionId: session.id, section, transcript: session.transcript, deps })
+    );
+  }
+
+  const openItems = Object.fromEntries(
+    ONBOARDING_QUESTIONS.filter((question) => !view.questions[question.id]).map(
+      (question): [string, OnboardingOpenItem] => [question.id, { state: "deferred", at }]
+    )
+  );
+
+  await d.sessions.record(identity, session.id, {
+    checklist: {
+      "skip:interview": { state: "skipped", at },
+      ...Object.fromEntries(
+        extractions.map((extraction) => [
+          extractionEntryKey(extraction.sectionId as OnboardingSectionId),
+          { state: extraction.status, at },
+        ])
+      ),
+    },
+    openItems,
+  });
+
+  const finished = await d.sessions.finish(identity, session.id, "completed");
+  await d.markCompleted(identity.companyId, at);
+
+  return {
+    sessionId: finished.id,
+    completedAt: finished.completedAt ?? at,
+    openItems: Object.keys(finished.openItems).length,
+    extractions,
   };
 };

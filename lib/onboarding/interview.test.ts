@@ -1,3 +1,4 @@
+import { AIMessage } from "@langchain/core/messages";
 import { FakeToolCallingModel } from "langchain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -273,5 +274,113 @@ describe("runOnboardingTurn", () => {
 
     expect(result).toMatchObject({ ok: false, reply: "", extractions: [] });
     expect((await sessions.getCurrent(IDENTITY))?.transcript).toEqual([]);
+  });
+});
+
+/**
+ * Replays exact model messages - text and tool calls together - the way Claude
+ * actually responds. The echoing fake above cannot show what happens when the
+ * question is written alongside a tool call and the final message is empty.
+ */
+class ExactScriptModel extends FakeToolCallingModel {
+  private step = 0;
+
+  constructor(private readonly script: AIMessage[]) {
+    super({ toolCalls: [] });
+  }
+
+  // The base class returns a fresh instance, which would lose the script.
+  bindTools() {
+    return this;
+  }
+
+  async _generate() {
+    const message = this.script[this.step] ?? new AIMessage("");
+    this.step += 1;
+    return { generations: [{ text: message.text, message }], llmOutput: {} };
+  }
+}
+
+const toolCall = (id: string, name: string, args: Record<string, unknown>) => ({ id, name, args, type: "tool_call" as const });
+
+describe("runOnboardingTurn with Claude-shaped responses", () => {
+  beforeEach(() => {
+    createSamModel.mockReset();
+  });
+
+  it("keeps a question Sam writes alongside a tool call", async () => {
+    const { deps, sessions } = setup();
+    createSamModel.mockReturnValueOnce(
+      new ExactScriptModel([
+        new AIMessage({
+          content: "Thanks! How do customers pay you?",
+          tool_calls: [toolCall("c1", "present_choices", { questionId: "pricing-and-billing" })],
+        }),
+        new AIMessage(""),
+      ])
+    );
+
+    const result = await runOnboardingTurn({ identity: IDENTITY, deps, message: "We sell scheduling software to clinics." });
+
+    expect(result).toMatchObject({ ok: true, reply: "Thanks! How do customers pay you?", choices: { questionId: "pricing-and-billing" } });
+    expect((await sessions.getCurrent(IDENTITY))?.transcript[1]).toMatchObject({
+      role: "sam",
+      text: "Thanks! How do customers pay you?",
+    });
+  });
+
+  it("discards every write from a turn that does not complete", async () => {
+    const { deps, sessions, assumptions } = setup();
+    createSamModel.mockReturnValueOnce(
+      new ExactScriptModel([
+        new AIMessage({ content: "", tool_calls: [toolCall("a", "record_assumption", { key: "gross_margin_pct", value: 72, questionId: "gross-margin" })] }),
+        new AIMessage({ content: "", tool_calls: [toolCall("b", "mark_question", { questionIds: ["what-you-sell"], state: "answered" })] }),
+        new AIMessage({ content: "", tool_calls: [toolCall("c", "mark_question", { questionIds: ["pricing-and-billing"], state: "answered" })] }),
+      ])
+    );
+
+    const result = await runOnboardingTurn({
+      identity: IDENTITY,
+      deps,
+      message: "Here's a lot of detail at once.",
+      policy: { maxModelCalls: 2 },
+    });
+
+    expect(result).toMatchObject({ ok: false, outcome: "max_model_calls" });
+    expect(assumptions.size).toBe(0);
+    const session = await sessions.getCurrent(IDENTITY);
+    expect(session?.checklist).toEqual({});
+    expect(session?.transcript).toEqual([]);
+  });
+
+  it("will not mark a section's questions answered in the turn that opened it", async () => {
+    const { deps, sessions } = setup({ semantic: [{ assessment: "Nothing durable yet.", operations: [] }] });
+    createSamModel.mockReturnValueOnce(
+      new ExactScriptModel([
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            toolCall("a", "mark_question", {
+              questionIds: ["what-you-sell", "pricing-and-billing", "current-revenue", "gross-margin", "customer-concentration"],
+              state: "answered",
+            }),
+          ],
+        }),
+        new AIMessage({ content: "", tool_calls: [toolCall("b", "complete_section", { sectionId: "company-basics" })] }),
+        new AIMessage({ content: "", tool_calls: [toolCall("c", "mark_question", { questionIds: ["monthly-spend"], state: "answered" })] }),
+        new AIMessage("Got it. What did you last raise?"),
+      ])
+    );
+
+    const result = await runOnboardingTurn({
+      identity: IDENTITY,
+      deps,
+      message: "That covers the basics, and we spend about $40K a month.",
+    });
+
+    expect(result).toMatchObject({ ok: true, currentSection: "company-position", reply: "Got it. What did you last raise?" });
+    const session = await sessions.getCurrent(IDENTITY);
+    expect(session?.checklist[sectionEntryKey("company-basics")]).toMatchObject({ state: "complete" });
+    expect(session?.checklist[questionEntryKey("monthly-spend")]).toBeUndefined();
   });
 });

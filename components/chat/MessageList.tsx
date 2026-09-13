@@ -3,9 +3,9 @@
 import type { ReactNode } from "react";
 
 import { ActivitySummary, ActivityTrail } from "@/components/chat/ActivityTrail";
+import { ListenButton } from "@/components/chat/ListenButton";
 import { ChartFigure } from "@/components/chat/ChartFigure";
 import { Markdown } from "@/components/chat/Markdown";
-import { SamOrb } from "@/components/SamOrb";
 import { currentActivity, summarizeActivity, type ActivityStep } from "@/lib/chat/activity";
 import type { ChatChart, ChatMessage } from "@/lib/chat/client";
 import { cn } from "@/lib/utils";
@@ -137,6 +137,7 @@ export function MessageList({
             content={message.content}
             summary={summaries[message.id]}
             charts={message.charts}
+            footer={<ListenButton threadId={message.threadId} messageId={message.id} />}
           />
         ),
       )}
@@ -167,7 +168,6 @@ const STARTERS = [
 export function EmptyConversation({ onAsk, disabled }: { onAsk: (question: string) => void; disabled: boolean }) {
   return (
     <div className="mx-auto flex w-full max-w-[46rem] flex-1 flex-col items-center justify-center gap-6 px-5 py-16 text-center sm:px-6">
-      <SamOrb energy={0.3} points={360} className="h-28 w-28 sm:h-32 sm:w-32" />
       <div className="flex flex-col gap-2">
         <h2 className="text-balance text-2xl font-semibold tracking-tight text-foreground">
           What do you want to know?
