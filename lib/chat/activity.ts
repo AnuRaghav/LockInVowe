@@ -4,9 +4,9 @@ import type { ChatActivityEvent } from "@/lib/chat/stream";
  * How a run in flight is narrated to a founder.
  *
  * The harness already decides what is safe to emit (tool name, kind, status,
- * timing, and an opt-in summary - never arguments or reasoning). This turns
- * that into the two sentences a founder actually wants: what Sam is doing now,
- * and what it did before answering. Phrasing is keyed by tool name and falls
+ * timing, and an opt-in summary - never arguments or reasoning). This keeps
+ * those display fields for the expandable work panel and gives each call
+ * a founder-friendly label. Phrasing is keyed by tool name and falls
  * back to the server's own declared label, so a tool added later still
  * narrates itself without a change here.
  */
@@ -16,7 +16,10 @@ export interface ActivityStep {
   name: string;
   /** The server's declared label, kept as the fallback phrasing. */
   label?: string;
-  status: "running" | "done" | "failed";
+  status: "running" | "awaiting_approval" | "done" | "failed" | "stopped";
+  kind?: string;
+  durationMs?: number;
+  summary?: string;
 }
 
 interface Phrasing {
@@ -81,12 +84,23 @@ export const summarizeActivity = (steps: ActivityStep[]): string | null => {
 export const applyActivityEvent = (steps: ActivityStep[], event: ChatActivityEvent): ActivityStep[] => {
   const existing = steps.findIndex((step) => step.callId === event.callId);
   if (event.type === "tool_started" || event.type === "tool_awaiting_approval") {
-    if (existing >= 0) return steps;
-    return [...steps, { callId: event.callId, name: event.name, label: event.label, status: "running" }];
+    if (existing >= 0) return steps.map((step, index) => index === existing
+      ? { ...step, status: event.type === "tool_awaiting_approval" ? "awaiting_approval" : "running" }
+      : step);
+    return [...steps, {
+      callId: event.callId, name: event.name, label: event.label, kind: event.kind,
+      status: event.type === "tool_awaiting_approval" ? "awaiting_approval" : "running",
+    }];
   }
   const status: ActivityStep["status"] = event.type === "tool_completed" ? "done" : "failed";
+  const result = { status, durationMs: event.durationMs, summary: event.summary };
   if (existing < 0) {
-    return [...steps, { callId: event.callId, name: event.name, label: event.label, status }];
+    return [...steps, { callId: event.callId, name: event.name, label: event.label, kind: event.kind, ...result }];
   }
-  return steps.map((step, index) => (index === existing ? { ...step, status } : step));
+  return steps.map((step, index) => (index === existing ? { ...step, ...result } : step));
 };
+
+/** A finished run must not leave a tool looking perpetually active. */
+export const finishActivity = (steps: ActivityStep[]): ActivityStep[] =>
+  steps.map((step) => step.status === "running" || step.status === "awaiting_approval"
+    ? { ...step, status: "stopped" } : step);

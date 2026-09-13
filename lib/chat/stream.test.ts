@@ -3,6 +3,18 @@ import { describe, expect, it } from "vitest";
 import { createStreamParser } from "@/lib/chat/stream";
 
 describe("chat stream parser", () => {
+  it("keeps safe tool display metadata and rejects invalid durations", () => {
+    const parser = createStreamParser();
+    expect(parser.push('2:[{"type":"tool_started","callId":"c1","name":"forecast_cash","kind":"calculation"}]\n')[0]).toMatchObject({
+      type: "activity", activity: { kind: "calculation" },
+    });
+    expect(parser.push('2:[{"type":"tool_completed","callId":"c1","name":"forecast_cash","durationMs":1200,"summary":"Two scenarios compared"}]\n')[0]).toMatchObject({
+      type: "activity", activity: { durationMs: 1200, summary: "Two scenarios compared" },
+    });
+    const event = parser.push('2:[{"type":"tool_failed","callId":"c1","name":"forecast_cash","durationMs":-1}]\n')[0];
+    expect(event.type === "activity" && event.activity.durationMs).toBeUndefined();
+  });
+
   it("reads text deltas and the thread frame the chat route writes", () => {
     const parser = createStreamParser();
     expect(parser.push('2:[{"type":"thread","threadId":"t-1"}]\n0:"Your runway"\n')).toEqual([
@@ -37,6 +49,7 @@ describe("chat stream parser", () => {
           callId: "c1",
           name: "forecast_cash",
           label: "Forecasting",
+          kind: "calculation",
           summary: undefined,
           critical: false,
         },
