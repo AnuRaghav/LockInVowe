@@ -5,6 +5,7 @@ import { FakeToolCallingModel } from "langchain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SamRunEvent } from "@/lib/agents/sam/harness/events";
+import { testFinancialSession } from "@/lib/finance/testing";
 
 const createSamModel = vi.fn();
 vi.mock("@/lib/agents/sam/model", () => ({ createSamModel }));
@@ -13,15 +14,11 @@ const { runSamAgent, runSamAgentStructured } = await import("@/lib/agents/sam/ag
 const { streamSamAgent } = await import("@/lib/agents/sam/stream");
 
 const COMPANY_ID = "company_stream_1";
-const CONTEXT = { companyId: COMPANY_ID };
+const CONTEXT = { companyId: COMPANY_ID, financials: testFinancialSession(COMPANY_ID) };
 
-const runwayCall = (id: string, cash = 600_000) => ({
-  name: "calculate_runway",
-  args: {
-    cashOnHandUsd: cash,
-    monthlyRevenueUsd: 20_000,
-    monthlyExpensesUsd: 70_000,
-  },
+const runwayCall = (id: string, trailingMonths = 3) => ({
+  name: "financial_burn_runway",
+  args: { currency: "USD", trailingMonths },
   id,
 });
 
@@ -159,16 +156,16 @@ describe("streamSamAgent", () => {
 
       const started = events.find((event) => event.type === "tool_started");
       expect(started).toMatchObject({
-        name: "calculate_runway",
-        kind: "calculation",
-        label: "Calculating runway",
+        name: "financial_burn_runway",
+        kind: "read_only",
+        label: "Checking burn and runway basis",
       });
 
       const completed = events.find((event) => event.type === "tool_completed");
       // The declared, sanitized summary - a verdict, not the company's numbers.
       expect(completed).toMatchObject({
-        name: "calculate_runway",
-        summary: "status: healthy",
+        name: "financial_burn_runway",
+        summary: "Runway unavailable from observed data",
       });
       expect(completed).toHaveProperty("durationMs");
     });
@@ -223,7 +220,7 @@ describe("streamSamAgent", () => {
       // asserts the path itself: same loop, same harness, same result shape,
       // falling back to the final message when no typed answer was produced.
       expect(result.outcome).toBe("completed");
-      expect(result.run.toolNames).toEqual(["calculate_runway"]);
+      expect(result.run.toolNames).toEqual(["financial_burn_runway"]);
       expect(result.text).toEqual(expect.any(String));
     });
   });
@@ -272,7 +269,7 @@ describe("streamSamAgent", () => {
       expect(lifecycle).not.toContain("netMonthlyBurnUsd");
       expect(lifecycle).not.toContain("zeroCashDate");
       // Only the declared summary.
-      expect(lifecycle).toContain("status: healthy");
+      expect(lifecycle).toContain("Runway unavailable from observed data");
     });
   });
 
@@ -309,9 +306,9 @@ describe("streamSamAgent", () => {
       createSamModel.mockReturnValue(
         new ScriptedModel({
           toolCalls: [
-            [runwayCall("b1", 100_000)],
-            [runwayCall("b2", 200_000)],
-            [runwayCall("b3", 300_000)],
+            [runwayCall("b1", 1)],
+            [runwayCall("b2", 2)],
+            [runwayCall("b3", 3)],
           ],
         })
       );

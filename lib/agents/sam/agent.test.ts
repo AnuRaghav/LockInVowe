@@ -1,6 +1,7 @@
 import { ToolMessage } from "@langchain/core/messages";
 import { FakeToolCallingModel } from "langchain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { testFinancialSession } from "@/lib/finance/testing";
 
 const createSamModel = vi.fn();
 
@@ -12,14 +13,14 @@ const { createSeededPersistentMemory } = await import("@/lib/memory/seed");
 const { InMemoryThreadMemory } = await import("@/lib/memory/in-memory");
 
 const COMPANY_ID = "company_test_1";
-const TEST_CONTEXT = { companyId: COMPANY_ID };
+const TEST_CONTEXT = { companyId: COMPANY_ID, financials: testFinancialSession(COMPANY_ID) };
 
 /** A run wired to seeded company memory, as the application wires it in production. */
 const withMemory = (overrides: { maxMemories?: number; threadId?: string } = {}) => {
   const persistentMemory = createSeededPersistentMemory(COMPANY_ID);
 
   return {
-    context: { companyId: COMPANY_ID, threadId: overrides.threadId, persistentMemory },
+    context: { companyId: COMPANY_ID, threadId: overrides.threadId, persistentMemory, financials: testFinancialSession(COMPANY_ID) },
     contextBuilder: createSamContextBuilder({
       persistentMemory,
       threadMemory: new InMemoryThreadMemory(),
@@ -29,12 +30,8 @@ const withMemory = (overrides: { maxMemories?: number; threadId?: string } = {})
 };
 
 const runwayCall = {
-  name: "calculate_runway",
-  args: {
-    cashOnHandUsd: 600_000,
-    monthlyRevenueUsd: 20_000,
-    monthlyExpensesUsd: 70_000,
-  },
+  name: "financial_burn_runway",
+  args: { currency: "USD", trailingMonths: 3 },
   id: "call_1",
 };
 
@@ -68,9 +65,8 @@ describe("runSamAgent", () => {
     expect(toolPayload(result.messages)).toMatchObject({
       ok: true,
       data: {
-        netMonthlyBurnUsd: 50_000,
-        runwayMonths: 12,
-        status: "healthy",
+        cash: { minor: 876138, display: "USD 8761.38" },
+        runway: { months: null, status: "unavailable" },
       },
     });
   });

@@ -76,17 +76,15 @@ const field = (data: unknown, key: string): unknown =>
 
 /** Policy for every tool in {@link SAM_TOOLS}, keyed by tool name. */
 export const SAM_TOOL_POLICIES: Readonly<Record<string, SamToolPolicy>> = {
-  calculate_runway: {
-    kind: "calculation",
-    retryable: true,
-    requiresApproval: false,
-    label: "Calculating runway",
-    // The qualitative verdict only. No cash balance, no burn, no dates.
+  financial_position: { kind: "read_only", retryable: true, requiresApproval: false, label: "Reading observed financial position" },
+  financial_cash_flow: { kind: "read_only", retryable: true, requiresApproval: false, label: "Analyzing recorded cash flow" },
+  financial_burn_runway: { kind: "read_only", retryable: true, requiresApproval: false, label: "Checking burn and runway basis",
     summarize: (data) => {
-      const status = field(data, "status");
-      return typeof status === "string" ? `status: ${status}` : undefined;
-    },
-  },
+      const status = field(field(data, "runway"), "status");
+      return status === "unavailable" ? "Runway unavailable from observed data" : undefined;
+    } },
+  compare_financial_periods: { kind: "read_only", retryable: true, requiresApproval: false, label: "Comparing financial periods" },
+  explain_financial_number: { kind: "read_only", retryable: true, requiresApproval: false, label: "Tracing financial evidence" },
   search_memory: {
     kind: "read_only",
     retryable: true,

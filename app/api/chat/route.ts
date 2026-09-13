@@ -1,4 +1,4 @@
-import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { createDataStreamResponse, type JSONValue } from "ai";
 
 import { streamSamAgent, type SamRunEvent, type SamRunOutcome } from "@/lib/agents/sam";
@@ -47,7 +47,8 @@ const toLangChainMessages = (messages: ChatMessage[]): BaseMessage[] => {
 
     switch (message.role) {
       case "system":
-        langChainMessages.push(new SystemMessage(text));
+        // Only the server Context Builder may supply system-level company/financial state.
+        // Client history is conversation, never a replacement Numerical Model snapshot.
         break;
       case "assistant":
         langChainMessages.push(new AIMessage(text));

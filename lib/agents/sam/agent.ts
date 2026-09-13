@@ -5,6 +5,7 @@ import { createAgent } from "langchain";
 import { DEFAULT_SAM_MODEL, type SamModelConfig } from "@/lib/agents/sam/config";
 import {
   samRuntimeContextSchema,
+  financialSession,
   type SamRuntimeContext,
 } from "@/lib/agents/sam/context";
 import {
@@ -38,6 +39,7 @@ import {
 import { buildSamMiddleware } from "@/lib/agents/sam/harness/run";
 import { createSamModel } from "@/lib/agents/sam/model";
 import { SAM_SYSTEM_PROMPT, buildSamSystemPrompt } from "@/lib/agents/sam/prompt";
+import { loadFinancialSnapshot } from "@/lib/finance/sam-surface";
 import { samAnswerSchema, type SamAnswer, type SamToolCall } from "@/lib/agents/sam/schemas";
 import { SAM_TOOLS } from "@/lib/agents/sam/tools";
 import type { SamToolPolicyRegistry } from "@/lib/agents/sam/tools/policy";
@@ -202,6 +204,7 @@ const emptyContext = (companyId: string): SamInitialContext => ({
   thread: null,
   brief: null,
   memories: [],
+  numerical: { status: "unavailable", reason: "context_not_loaded" },
 });
 
 /**
@@ -221,6 +224,8 @@ export const prepareSamRun = async (
   extraSignal?: AbortSignal
 ) => {
   const runtime = samRuntimeContextSchema.parse(input.context);
+  // Shared successful read for baseline and tools; no cross-run/global cache.
+  runtime.financials = financialSession(runtime);
   const policy = resolveSamExecutionPolicy(input.policy, input.toolPolicies);
   const history = toMessages(input.messages);
 
@@ -246,6 +251,13 @@ export const prepareSamRun = async (
     recorder.contextFailed(error, isRetryableError(error));
   }
 
+  // A semantic/context-provider failure must not erase independently available financial facts.
+  if (!initialContext.numerical || (initialContext.numerical.status === "unavailable" && initialContext.numerical.reason === "context_not_loaded")) {
+    initialContext.numerical = await loadFinancialSnapshot(runtime.financials);
+  }
+  if (initialContext.numerical?.status === "unavailable" && initialContext.numerical.reason !== "context_not_loaded") {
+    recorder.contextFailed(new Error("Numerical context unavailable"), false);
+  }
   const systemPrompt = input.systemPrompt ?? buildSamSystemPrompt(initialContext);
   recorder.contextBuilt(
     measureSamContext({

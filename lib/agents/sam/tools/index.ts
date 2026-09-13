@@ -1,6 +1,7 @@
 import type { ClientTool } from "@langchain/core/tools";
 
-import { calculateRunwayTool } from "@/lib/agents/sam/tools/calculate-runway";
+import { financialPositionTool, financialCashFlowTool, financialBurnRunwayTool,
+  financialComparisonTool, financialTraceTool } from "@/lib/agents/sam/tools/financial";
 import {
   getMemoryHistoryTool,
   getMemoryTool,
@@ -16,14 +17,16 @@ import {
  * memory interfaces in `lib/memory/`.
  */
 export const SAM_TOOLS: ClientTool[] = [
-  calculateRunwayTool,
+  financialPositionTool, financialCashFlowTool, financialBurnRunwayTool,
+  financialComparisonTool, financialTraceTool,
   searchMemoryTool,
   getMemoryTool,
   getMemoryHistoryTool,
 ];
 
 export {
-  calculateRunwayTool,
+  financialPositionTool, financialCashFlowTool, financialBurnRunwayTool,
+  financialComparisonTool, financialTraceTool,
   getMemoryHistoryTool,
   getMemoryTool,
   searchMemoryTool,

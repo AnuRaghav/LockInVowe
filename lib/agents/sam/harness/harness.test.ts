@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import type { samRuntimeContextSchema } from "@/lib/agents/sam/context";
+import { testFinancialSession } from "@/lib/finance/testing";
 
 const createSamModel = vi.fn();
 vi.mock("@/lib/agents/sam/model", () => ({ createSamModel }));
@@ -24,7 +25,7 @@ type RuntimeOf = ToolRuntime<unknown, typeof samRuntimeContextSchema>;
 type SamRunResult = Awaited<ReturnType<typeof runSamAgent>>;
 
 const COMPANY_ID = "company_harness_1";
-const CONTEXT = { companyId: COMPANY_ID };
+const CONTEXT = { companyId: COMPANY_ID, financials: testFinancialSession(COMPANY_ID) };
 
 /** Retries are exercised for their behaviour, not their wall-clock backoff. */
 const FAST_RETRIES = { retryInitialDelayMs: 1, retryMaxDelayMs: 2 } as const;
@@ -32,15 +33,11 @@ const FAST_RETRIES = { retryInitialDelayMs: 1, retryMaxDelayMs: 2 } as const;
 const httpError = (message: string, status: number): Error =>
   Object.assign(new Error(message), { status });
 
-const runwayArgs = (cashOnHandUsd: number) => ({
-  cashOnHandUsd,
-  monthlyRevenueUsd: 20_000,
-  monthlyExpensesUsd: 70_000,
-});
+const runwayArgs = (trailingMonths: number) => ({ currency: "USD", trailingMonths });
 
-const runwayCall = (id: string, cash = 600_000) => ({
-  name: "calculate_runway",
-  args: runwayArgs(cash),
+const runwayCall = (id: string, trailingMonths = 3) => ({
+  name: "financial_burn_runway",
+  args: runwayArgs(trailingMonths),
   id,
 });
 
@@ -158,7 +155,7 @@ describe("Sam execution harness", () => {
     it("finishes a multi-step tool run and records what it did", async () => {
       createSamModel.mockReturnValue(
         new ScriptedModel({
-          toolCalls: [[runwayCall("call_1")], [runwayCall("call_2", 900_000)], []],
+          toolCalls: [[runwayCall("call_1")], [runwayCall("call_2", 6)], []],
         })
       );
 
@@ -171,8 +168,8 @@ describe("Sam execution harness", () => {
       expect(result.ok).toBe(true);
       expect(result.degraded).toBe(false);
       expect(result.toolCalls.map((call) => call.name)).toEqual([
-        "calculate_runway",
-        "calculate_runway",
+        "financial_burn_runway",
+        "financial_burn_runway",
       ]);
 
       expect(result.run.runId).toMatch(/^run_/);
@@ -180,8 +177,8 @@ describe("Sam execution harness", () => {
       expect(result.run.companyId).toBe(COMPANY_ID);
       expect(result.run.modelCallCount).toBe(3);
       expect(result.run.toolCallCount).toBe(2);
-      expect(result.run.toolNames).toEqual(["calculate_runway", "calculate_runway"]);
-      expect(result.run.toolCalls[0]).toMatchObject({ kind: "calculation", ok: true });
+      expect(result.run.toolNames).toEqual(["financial_burn_runway", "financial_burn_runway"]);
+      expect(result.run.toolCalls[0]).toMatchObject({ kind: "read_only", ok: true });
       expect(result.run.toolCalls[0].durationMs).toBeGreaterThanOrEqual(0);
       expect(result.run.durationMs).toBeGreaterThanOrEqual(0);
       expect(result.run.outcome).toBe("completed");
@@ -209,10 +206,10 @@ describe("Sam execution harness", () => {
       createSamModel.mockReturnValue(
         new ScriptedModel({
           toolCalls: [
-            [runwayCall("m1", 100_000)],
-            [runwayCall("m2", 200_000)],
-            [runwayCall("m3", 300_000)],
-            [runwayCall("m4", 400_000)],
+            [runwayCall("m1", 1)],
+            [runwayCall("m2", 2)],
+            [runwayCall("m3", 3)],
+            [runwayCall("m4", 4)],
           ],
         })
       );
@@ -233,10 +230,10 @@ describe("Sam execution harness", () => {
       createSamModel.mockReturnValue(
         new ScriptedModel({
           toolCalls: [
-            [runwayCall("t1", 100_000)],
-            [runwayCall("t2", 200_000)],
-            [runwayCall("t3", 300_000)],
-            [runwayCall("t4", 400_000)],
+            [runwayCall("t1", 1)],
+            [runwayCall("t2", 2)],
+            [runwayCall("t3", 3)],
+            [runwayCall("t4", 4)],
           ],
         })
       );
@@ -255,9 +252,9 @@ describe("Sam execution harness", () => {
       createSamModel.mockReturnValue(
         new ScriptedModel({
           toolCalls: [
-            [runwayCall("p1", 100_000)],
-            [runwayCall("p2", 200_000)],
-            [runwayCall("p3", 300_000)],
+            [runwayCall("p1", 1)],
+            [runwayCall("p2", 2)],
+            [runwayCall("p3", 3)],
           ],
         })
       );
@@ -269,7 +266,7 @@ describe("Sam execution harness", () => {
           maxModelCalls: 50,
           maxToolCalls: 50,
           maxRepeatedToolCalls: 50,
-          maxCallsPerTool: { calculate_runway: 1 },
+          maxCallsPerTool: { financial_burn_runway: 1 },
         },
       });
 
@@ -448,9 +445,9 @@ describe("Sam execution harness", () => {
           toolCalls: [
             [
               {
-                name: "calculate_runway",
-                // The model tries to choose the company. It must not be able to.
-                args: { ...runwayArgs(600_000), companyId: "company_someone_else" },
+                name: "financial_burn_runway",
+                // Strict selectors reject attempts to choose another company.
+                args: { ...runwayArgs(3), companyId: "company_someone_else" },
                 id: "s1",
               },
             ],
@@ -468,10 +465,7 @@ describe("Sam execution harness", () => {
       });
 
       expect(result.outcome).toBe("completed");
-      expect(payloadOf(toolMessages(result)[0])).toMatchObject({
-        ok: true,
-        data: { companyId: COMPANY_ID },
-      });
+      expect(toolMessages(result)[0].text).not.toContain('"ok":true');
 
       // ...and the run identity a future mutating tool would key on is server-set.
       expect(payloadOf(toolMessages(result)[1])).toMatchObject({
@@ -543,7 +537,7 @@ describe("Sam execution harness", () => {
 
       const result = await runSamAgent({
         messages: "Should we hire a senior engineer?",
-        context: { companyId: COMPANY_ID, persistentMemory },
+        context: { companyId: COMPANY_ID, persistentMemory, financials: testFinancialSession(COMPANY_ID) },
         contextBuilder: createSamContextBuilder({
           persistentMemory,
           threadMemory: new InMemoryThreadMemory(),

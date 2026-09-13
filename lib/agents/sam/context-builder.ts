@@ -1,5 +1,6 @@
 import type { SamRuntimeContext } from "@/lib/agents/sam/context";
-import { memoryScope } from "@/lib/agents/sam/context";
+import { financialSession, memoryScope } from "@/lib/agents/sam/context";
+import { loadFinancialSnapshot, type FinancialSnapshot } from "@/lib/finance/sam-surface";
 import { getPersistentMemory, getThreadMemory } from "@/lib/memory";
 import type {
   MemoryRecord,
@@ -23,7 +24,7 @@ import { hasServiceCredentials } from "@/lib/supabase/service";
  *     thread state    what this conversation has established so far
  *   + company brief   baseline operating context, the same every turn
  *   + semantic blocks the current understanding relevant to *this* request
- *   + (later)         numerical model state, source-derived facts
+ *   + numerical       qualified Source-derived actuals, separate from beliefs
  *
  * The brief and the blocks are doing different jobs and the distinction is the
  * point. The brief is what a CFO would already know walking in - it is paid for
@@ -50,8 +51,8 @@ export interface SamInitialContext {
   brief: CompanyBrief | null;
   /** Current company understanding judged relevant to this request. */
   memories: MemoryRecord[];
-  // Future providers land here as sibling fields - `numerical`, `sourceFacts` -
-  // behind the same interface, with no change to Sam.
+  /** Source-derived facts, never semantic beliefs. Optional for custom builders. */
+  numerical?: FinancialSnapshot;
 }
 
 export interface SamContextRequest {
@@ -116,7 +117,7 @@ export const createSamContextBuilder = ({
     const persistent = persistentMemory ?? runtime.persistentMemory ?? getPersistentMemory();
     const threads = threadMemory ?? getThreadMemory();
 
-    const [thread, brief, memories] = await Promise.all([
+    const [thread, brief, memories, numerical] = await Promise.all([
       runtime.threadId
         ? threads.load({ companyId: runtime.companyId, threadId: runtime.threadId })
         : Promise.resolve(null),
@@ -124,8 +125,9 @@ export const createSamContextBuilder = ({
       // Relevance-selected, not "every current block". The brief already covers
       // what every conversation needs; this covers what *this* one needs.
       persistent.search(memoryScope(runtime), { text: request, limit: maxMemories }),
+      loadFinancialSnapshot(financialSession(runtime)),
     ]);
 
-    return { companyId: runtime.companyId, thread, brief, memories };
+    return { companyId: runtime.companyId, thread, brief, memories, numerical };
   },
 });
