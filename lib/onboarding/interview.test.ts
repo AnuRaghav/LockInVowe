@@ -109,11 +109,16 @@ describe("runOnboardingTurn", () => {
 
   it("opens the interview and files Sam's first turn under the first section", async () => {
     const { deps, sessions } = setup();
-    scriptTurn();
+    scriptTurn([{ name: "present_choices", args: { questionId: "pricing-and-billing" } }]);
 
     const result = await runOnboardingTurn({ identity: IDENTITY, deps });
 
-    expect(result).toMatchObject({ ok: true, currentSection: "company-basics", onboardingComplete: false });
+    expect(result).toMatchObject({
+      ok: true,
+      currentSection: "company-basics",
+      onboardingComplete: false,
+      choices: { questionId: "pricing-and-billing", options: expect.arrayContaining(["Annual prepay"]) },
+    });
     expect(result.reply).not.toBe("");
 
     const session = await sessions.getCurrent(IDENTITY);

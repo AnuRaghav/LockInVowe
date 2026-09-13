@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { requireSamContext, type samRuntimeContextSchema } from "@/lib/agents/sam/context";
 import type { SamToolPolicyRegistry } from "@/lib/agents/sam/tools/policy";
-import { runTool } from "@/lib/agents/sam/tools/result";
+import { runTool, type Epistemic } from "@/lib/agents/sam/tools/result";
 import { ASSUMPTION_KEYS, parseAssumptionValue } from "@/lib/company/assumptions";
 import {
   BAD_NEWS_DELIVERY,
@@ -29,6 +29,7 @@ import {
   sectionEntryKey,
   unresolvedCoreQuestions,
 } from "@/lib/onboarding/checklist";
+import { CHOICE_QUESTION_IDS, ONBOARDING_CHOICES } from "@/lib/onboarding/choices";
 import type { OnboardingOpenItem } from "@/lib/onboarding/sessions";
 
 /**
@@ -63,6 +64,9 @@ const onboardingRun = async (runtime: Runtime, toolName: string) => {
 
   return { identity, capability, session };
 };
+
+/** Everything these tools record was stated by the founder in this interview. */
+const ONBOARDING_EPISTEMIC: Epistemic = { class: "conversation_claim", origin: "onboarding" };
 
 const now = () => new Date().toISOString();
 
@@ -114,7 +118,7 @@ export const recordAssumptionTool = tool(
       }
 
       return { recorded: input.key, questionAnswered: question?.id ?? null };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: RECORD_ASSUMPTION,
     description:
@@ -156,7 +160,7 @@ export const recordCompanyProfileTool = tool(
       }
 
       return { recorded: true, questionAnswered: question?.id ?? null };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: RECORD_COMPANY_PROFILE,
     description:
@@ -208,7 +212,7 @@ export const recordFounderPreferenceTool = tool(
       }
 
       return { recorded: Object.keys(patch), questionAnswered: question?.id ?? null };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: RECORD_FOUNDER_PREFERENCE,
     description:
@@ -267,7 +271,7 @@ export const markQuestionTool = tool(
 
       await capability.sessions.record(identity, capability.sessionId, { checklist, openItems });
       return { marked: questions.map((question) => question.id), state: input.state };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: MARK_QUESTION,
     description:
@@ -322,12 +326,28 @@ export const completeSectionTool = tool(
           : null,
         onboardingComplete: next === null,
       };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: COMPLETE_SECTION,
     description:
       "Close the current section once every core question in it is resolved. Returns the next section and what it needs to find out.",
     schema: z.object({ sectionId: z.enum(ONBOARDING_SECTION_IDS) }).strict(),
+  }
+);
+
+const PRESENT_CHOICES = "present_choices";
+
+export const presentChoicesTool = tool(
+  async (input, runtime: Runtime) =>
+    runTool(async () => {
+      await onboardingRun(runtime, PRESENT_CHOICES);
+      return { presented: input.questionId, options: ONBOARDING_CHOICES[input.questionId] };
+    }, ONBOARDING_EPISTEMIC),
+  {
+    name: PRESENT_CHOICES,
+    description:
+      "Show the founder quick-reply options for the question you are asking in this reply. Only for these questions, and only alongside asking it. The founder can still answer in their own words.",
+    schema: z.object({ questionId: z.enum(CHOICE_QUESTION_IDS) }).strict(),
   }
 );
 
@@ -337,11 +357,13 @@ export const ONBOARDING_TOOLS: ClientTool[] = [
   recordFounderPreferenceTool,
   markQuestionTool,
   completeSectionTool,
+  presentChoicesTool,
 ];
 
 /**
- * Every onboarding tool changes state, so none is retried by the harness. None
- * needs approval: the founder is the one giving the answers being saved.
+ * Every tool that saves an answer changes state, so none of those is retried by
+ * the harness; `present_choices` only shows options. None needs approval: the
+ * founder is the one giving the answers being saved.
  */
 export const ONBOARDING_TOOL_POLICIES: SamToolPolicyRegistry = {
   [RECORD_ASSUMPTION]: { kind: "action", retryable: false, requiresApproval: false, label: "Saving a company assumption" },
@@ -349,4 +371,5 @@ export const ONBOARDING_TOOL_POLICIES: SamToolPolicyRegistry = {
   [RECORD_FOUNDER_PREFERENCE]: { kind: "action", retryable: false, requiresApproval: false, label: "Saving how you like to work" },
   [MARK_QUESTION]: { kind: "action", retryable: false, requiresApproval: false, label: "Updating onboarding progress" },
   [COMPLETE_SECTION]: { kind: "action", retryable: false, requiresApproval: false, label: "Finishing an onboarding section" },
+  [PRESENT_CHOICES]: { kind: "read_only", retryable: true, requiresApproval: false, label: "Offering answer options" },
 };

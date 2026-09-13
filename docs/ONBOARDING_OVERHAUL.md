@@ -178,7 +178,8 @@ Edits are written as `corrected` revisions, not `revised`, because the
 company didn't change; the model got it wrong.
 
 Onboarding then runs base, conservative, and aggressive forecasts and shows the
-headline result, delivered according to the contract just set.
+headline result, delivered according to the contract just set. (This lands in
+Phase 4, once the planning engine reads what onboarding collects.)
 
 ## Architecture
 
@@ -263,12 +264,16 @@ All tables follow the existing pattern: RLS on, service role only.
    personal-answer extraction, onboarding updater variant, and
    `runOnboardingTurn`. Tested against scripted founder transcripts, including
    one that declines every sensitive question.
-3. **UI.** Replace the Model step in `app/onboarding/page.tsx` with the chat
-   interview and inline widgets (currency input, team/hires table from Gusto,
-   choice chips for preference and scenario questions), then playback and
-   forecasts.
+3. **UI.** *(Built.)* The Model step in `app/onboarding/page.tsx` is replaced
+   by the chat interview (`components/onboarding/InterviewStep.tsx`), with
+   quick replies Sam offers via `present_choices` and a team/hires table.
+   Playback (`PlaybackStep.tsx`) records every fix as a `corrected` revision,
+   then `/api/onboarding/complete` finishes the session. Forecasts moved to
+   Phase 4: they need the planning engine to read the new keys first, and the
+   conservative and aggressive cases need defined rules.
 4. **Sam integration.** Context builder, contract-driven prompt, brief changes,
-   planning reads new keys. Persona evals: the same below-floor runway result
+   planning reads new keys, and base, conservative, and aggressive forecasts
+   at the end of onboarding. Persona evals: the same below-floor runway result
    for a "lead with it" founder and a "news with options" founder. Delivery
    must differ; the facts and the timing of the warning must not.
 5. **After onboarding.** Deferred questions surface in chat when relevant; the

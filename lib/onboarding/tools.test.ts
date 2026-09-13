@@ -9,6 +9,7 @@ import { InMemoryOnboardingSessionStore } from "@/lib/onboarding/in-memory";
 import {
   completeSectionTool,
   markQuestionTool,
+  presentChoicesTool,
   recordAssumptionTool,
   recordCompanyProfileTool,
   recordFounderPreferenceTool,
@@ -153,5 +154,12 @@ describe("onboarding tools", () => {
     const session = await sessions.getCurrent(IDENTITY);
     expect(session!.checklist[sectionEntryKey("company-basics")]).toMatchObject({ state: "complete" });
     expect(session!.checklist[questionEntryKey("customer-concentration")]).toMatchObject({ state: "unsure" });
+  });
+
+  it("offers quick replies only for questions that have them", async () => {
+    const offered = parse(await presentChoicesTool.invoke({ questionId: "bad-news" }, config));
+    expect(offered).toMatchObject({ ok: true, data: { presented: "bad-news", options: expect.arrayContaining(["Tell me first, bluntly"]) } });
+
+    await expect(presentChoicesTool.invoke({ questionId: "gross-margin" as never }, config)).rejects.toThrow();
   });
 });

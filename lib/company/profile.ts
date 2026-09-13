@@ -28,6 +28,16 @@ export const readCompanyProfile = async (companyId: string): Promise<StoredCompa
   return { name: data?.name ?? null, description: data?.description ?? null };
 };
 
+/** Records when the founder finished onboarding. */
+export const markOnboardingCompleted = async (companyId: string, at: string): Promise<void> => {
+  const supabase = createServiceClient();
+  const { error } = await supabase
+    .from("companies")
+    .upsert({ id: companyId, onboarding_completed_at: at }, { onConflict: "id" });
+
+  if (error) throw error;
+};
+
 /** Sets whichever fields are given; fields left out keep their stored value. */
 export const saveCompanyProfile = async (companyId: string, profile: CompanyProfile): Promise<void> => {
   const supabase = createServiceClient();
