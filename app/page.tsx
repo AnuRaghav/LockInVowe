@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Bank, ChartLineUp, ChatCircleText } from "@phosphor-icons/react/dist/ssr";
 
 import { SamOrb } from "@/components/SamOrb";
+import { SamLogo } from "@/components/SamLogo";
 import { BlurFade } from "@/components/ui/blur-fade";
 
 const flow = [
@@ -26,10 +27,9 @@ export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="mx-auto flex h-16 w-full max-w-6xl items-center px-6">
-        <span className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-foreground">
-          <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-accent" />
-          Sam
-        </span>
+        <Link href="/" aria-label="Sam home" className="inline-flex shrink-0 items-center">
+          <SamLogo />
+        </Link>
       </header>
 
       <main className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 pb-16 pt-8 md:grid-cols-[1.05fr_1fr] md:gap-8 md:pt-4">
