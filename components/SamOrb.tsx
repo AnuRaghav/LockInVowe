@@ -15,9 +15,11 @@ const ACCENT: [number, number, number] = [90, 186, 65];
 export function SamOrb({ className, energy = 0.35, points = 620 }: SamOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const energyRef = useRef(energy);
+  const repaintRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     energyRef.current = energy;
+    repaintRef.current?.();
   }, [energy]);
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export function SamOrb({ className, energy = 0.35, points = 620 }: SamOrbProps) 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      mix += (energyRef.current - mix) * 0.05;
+      mix = reduce ? energyRef.current : mix + (energyRef.current - mix) * 0.05;
       t += 0.008 + mix * 0.016;
       const col = [0, 1, 2].map((k) => Math.round(255 + (ACCENT[k] - 255) * mix)).join(",");
       const R = Math.min(w, h) * 0.36;
@@ -102,10 +104,12 @@ export function SamOrb({ className, energy = 0.35, points = 620 }: SamOrbProps) 
       raf = requestAnimationFrame(loop);
     }
 
+    repaintRef.current = reduce ? paint : null;
     const onResize = () => reduce && paint();
     window.addEventListener("resize", onResize);
 
     return () => {
+      repaintRef.current = null;
       cancelAnimationFrame(raf);
       io.disconnect();
       window.removeEventListener("resize", onResize);

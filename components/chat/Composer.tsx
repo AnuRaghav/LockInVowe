@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Microphone, Stop } from "@phosphor-icons/react";
+import { ArrowUp, Stop } from "@phosphor-icons/react";
+import { VoiceInput } from "@/components/chat/VoiceInput";
 
 import { cn } from "@/lib/utils";
 
@@ -10,9 +11,7 @@ const MAX_HEIGHT_PX = 220;
 /**
  * The one way a founder says anything to Sam.
  *
- * Voice will arrive as speech-to-text feeding this same submit path - never a
- * second conversation system - so the microphone has a seat here already and
- * the send affordance stays the single place a turn begins.
+ * Dictation fills the editable draft; only send starts a conversation turn.
  */
 export function Composer({
   onSend,
@@ -67,6 +66,10 @@ export function Composer({
 
   return (
     <div className="mx-auto w-full max-w-[46rem] px-5 pb-5 sm:px-6 sm:pb-6">
+      <VoiceInput key={focusKey} disabled={disabled} running={running} onStop={onStop} onTranscript={(text) => {
+        setValue(current => current.trim() ? `${current}\n${text}` : text);
+        textareaRef.current?.focus();
+      }} />
       <div
         className={cn(
           "flex items-end gap-1.5 rounded-2xl border border-border bg-black/25 p-2 transition-colors",
@@ -74,15 +77,6 @@ export function Composer({
           disabled && "opacity-60",
         )}
       >
-        <button
-          type="button"
-          disabled
-          aria-label="Voice input (coming soon)"
-          title="Voice input is coming soon"
-          className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-xl text-muted-2 transition-colors disabled:cursor-not-allowed"
-        >
-          <Microphone className="h-[18px] w-[18px]" />
-        </button>
         <textarea
           ref={textareaRef}
           rows={1}
