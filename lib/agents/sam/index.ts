@@ -64,7 +64,11 @@ export {
 export { samAnswerSchema, type SamAnswer, type SamToolCall } from "@/lib/agents/sam/schemas";
 export {
   SAM_TOOLS,
-  calculateRunwayTool,
+  financialPositionTool,
+  financialCashFlowTool,
+  financialBurnRunwayTool,
+  financialComparisonTool,
+  financialTraceTool,
   getMemoryHistoryTool,
   getMemoryTool,
   searchMemoryTool,

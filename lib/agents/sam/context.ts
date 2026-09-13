@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import type { MemoryScope, PersistentMemory } from "@/lib/memory/types";
+import type { FinancialSession } from "@/lib/finance/session";
+import { createFinancialSession, FinancialDataUnavailable } from "@/lib/finance/session";
 
 const isPersistentMemory = (value: unknown): value is PersistentMemory =>
   typeof (value as PersistentMemory | undefined)?.search === "function" &&
@@ -42,6 +44,9 @@ export const samRuntimeContextSchema = z.object({
     .describe(
       "Long-lived company knowledge the retrieval tools read. Defaults to the application's memory module."
     ),
+  financials: z.custom<FinancialSession>((value) =>
+    typeof value?.companyId === "string" && typeof value?.read === "function"
+  ).optional().describe("Trusted run-local Numerical Model capability; never supplied by the model."),
   runId: z
     .string()
     .min(1)
@@ -91,6 +96,13 @@ export const requireSamContext = (
   const parsed = samRuntimeContextSchema.safeParse(runtime?.context);
   if (!parsed.success) throw new MissingSamContextError(toolName);
   return parsed.data;
+};
+
+/** Enforce scope even for injected capabilities; defaults support direct agent/tool invocation. */
+export const financialSession = (context: SamRuntimeContext): FinancialSession => {
+  if (context.financials && context.financials.companyId !== context.companyId)
+    throw new FinancialDataUnavailable("scope_mismatch");
+  return context.financials ?? createFinancialSession(context.companyId);
 };
 
 /** The company scope every memory read is confined to. */

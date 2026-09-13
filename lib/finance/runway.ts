@@ -1,9 +1,9 @@
 /**
- * Deterministic runway math.
+ * Legacy onboarding estimate over founder-supplied assumptions, NOT company actuals.
  *
- * This module is plain TypeScript with no LLM awareness: the agent decides
- * *when* runway matters, this code decides *what the number is*. Keep every
- * financial formula and threshold here so results are testable and auditable.
+ * Sam must not import this module or use it as authoritative financial state.
+ * Connected financial answers come from actuals.ts and the run-local financial
+ * session. This calculator remains only for the existing onboarding UI.
  */
 
 export interface RunwayInput {
@@ -55,7 +55,8 @@ const addMonths = (from: Date, months: number): Date => {
 };
 
 /**
- * Calculates how long the company can operate before running out of cash.
+ * Calculates an illustrative estimate from supplied onboarding assumptions.
+ * @deprecated Not authoritative company runway; never expose this as a Sam tool.
  *
  * @throws when any input is negative or non-finite.
  */
