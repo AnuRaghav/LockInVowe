@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig } from "@/lib/supabase/env";
 
 /** Reachable without a signed-in founder. Everything else redirects to /login. */
-const PUBLIC_PATHS = ["/login", "/signup", "/auth"];
+const PUBLIC_PATHS = ["/", "/login", "/signup", "/auth"];
 
 const isPublicPath = (pathname: string) =>
   PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));

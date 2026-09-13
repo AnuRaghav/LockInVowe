@@ -4,6 +4,7 @@ import { ArrowRight, Bank, ChartLineUp, ChatCircleText } from "@phosphor-icons/r
 import { SamOrb } from "@/components/SamOrb";
 import { SamLogo } from "@/components/SamLogo";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { createClient } from "@/lib/supabase/server";
 
 const flow = [
   {
@@ -23,21 +24,38 @@ const flow = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  // Public marketing page (see proxy.ts) - the CTA below sends an anonymous
+  // visitor through /login and back via ?next=, so this only needs to know
+  // whether to offer "Log in" or "Sign out".
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <div className="flex flex-1 flex-col">
       <header className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
         <Link href="/" aria-label="Sam home" className="inline-flex shrink-0 items-center">
           <SamLogo />
         </Link>
-        <form action="/auth/sign-out" method="post">
-          <button
-            type="submit"
+        {user ? (
+          <form action="/auth/sign-out" method="post">
+            <button
+              type="submit"
+              className="text-[13px] text-muted underline underline-offset-4 hover:text-foreground"
+            >
+              Sign out
+            </button>
+          </form>
+        ) : (
+          <Link
+            href="/login"
             className="text-[13px] text-muted underline underline-offset-4 hover:text-foreground"
           >
-            Sign out
-          </button>
-        </form>
+            Log in
+          </Link>
+        )}
       </header>
 
       <main className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 pb-16 pt-8 md:grid-cols-[1.05fr_1fr] md:gap-8 md:pt-4">
