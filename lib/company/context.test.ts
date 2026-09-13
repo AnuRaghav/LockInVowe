@@ -6,7 +6,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { getUser } }),
 }));
 
-const { resolveCompanyContext, UnauthenticatedError } = await import("@/lib/company/context");
+const { resolveCompanyContext, resolveAuthenticatedCompanyContext, UnauthenticatedError } = await import("@/lib/company/context");
 
 const request = (headers: Record<string, string> = {}) =>
   new Request("http://localhost/api/chat", { method: "POST", headers });
@@ -38,5 +38,13 @@ describe("resolveCompanyContext", () => {
     ).resolves.toEqual({ companyId: "company_header" });
 
     expect(getUser).not.toHaveBeenCalled();
+  });
+
+  it("always uses the authenticated user for company-scoped planning", async () => {
+    getUser.mockResolvedValue({ data: { user: { id: "authenticated-company" } } });
+
+    await expect(resolveAuthenticatedCompanyContext()).resolves.toEqual({
+      companyId: "authenticated-company",
+    });
   });
 });

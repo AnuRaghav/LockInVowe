@@ -44,12 +44,18 @@ export const resolveCompanyContext = async (req?: Request): Promise<SamContext> 
     return { companyId: headerOverride };
   }
 
+  return resolveAuthenticatedCompanyContext();
+};
+
+/** Always verifies Auth, including local development. No request/header identity override. */
+export const resolveAuthenticatedCompanyContext = async (): Promise<SamContext> => {
   const supabase = await createClient();
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (error || !user) {
     throw new UnauthenticatedError();
   }
 
