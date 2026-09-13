@@ -385,7 +385,7 @@ export const executeSamRun = async (
  * channel too and are excluded outright - their sanitized form is the tool
  * event, not the transcript.
  */
-const visibleAssistantText = (message: BaseMessage): string => {
+export const visibleAssistantText = (message: BaseMessage): string => {
   if (!(message instanceof AIMessage)) return "";
 
   const { content } = message;

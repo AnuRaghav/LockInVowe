@@ -23,7 +23,9 @@ export {
   type ExtractionDeps,
   type ExtractionResult,
 } from "@/lib/onboarding/extract";
+export { createTurnBuffer, type TurnBuffer } from "@/lib/onboarding/turn-buffer";
 export {
+  ONBOARDING_EXECUTION_POLICY,
   ONBOARDING_OPENING_MARKER,
   ONBOARDING_RESUME_MARKER,
   runOnboardingTurn,
@@ -42,7 +44,9 @@ export {
   correctPlayback,
   loadOnboardingPlayback,
   playbackCorrectionSchema,
+  skipOnboarding,
   type CompletedOnboarding,
+  type SkippedOnboarding,
   type OnboardingPlayback,
   type PlaybackCorrection,
   type PlaybackDeps,

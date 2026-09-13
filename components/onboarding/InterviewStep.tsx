@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, Check, Lock, UsersThree } from "@phosphor-icons/react";
 
+import { SkipInterview } from "@/components/onboarding/SkipInterview";
 import { TeamEditor } from "@/components/onboarding/TeamEditor";
 import { chip, pillPrimary, pillSecondary } from "@/components/onboarding/styles";
 import { GENERAL_REPLIES, PERSONAL_DECLINE_REPLY } from "@/lib/onboarding/choices";
@@ -43,7 +44,7 @@ function Turn({ turn }: { turn: InterviewTurnView }) {
  * the sections is shown as it happens. Quick replies are offered by Sam for the
  * question it just asked; typing is always an option.
  */
-export function InterviewStep({ onFinished }: { onFinished: () => void }) {
+export function InterviewStep({ onFinished, onSkipped }: { onFinished: () => void; onSkipped: () => void }) {
   const [interview, setInterview] = useState<InterviewStateView | null>(null);
   const [pendingTurn, setPendingTurn] = useState<InterviewTurnView | null>(null);
   const [thinking, setThinking] = useState(false);
@@ -135,6 +136,9 @@ export function InterviewStep({ onFinished }: { onFinished: () => void }) {
         <p className="max-w-[56ch] leading-relaxed text-muted">
           About ten minutes. Answer in your own words, skip anything, and come back to it later if you like.
         </p>
+        {!interview?.onboardingComplete && (
+          <SkipInterview label="Skip the rest of the questions" onSkipped={onSkipped} disabled={thinking} />
+        )}
       </div>
 
       {interview && (

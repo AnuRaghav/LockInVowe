@@ -7,6 +7,7 @@ import { ArrowClockwise, Bank, Check, CreditCard, Users } from "@phosphor-icons/
 import { GustoLinkButton } from "@/components/GustoLinkButton";
 import { InterviewStep } from "@/components/onboarding/InterviewStep";
 import { PlaybackStep } from "@/components/onboarding/PlaybackStep";
+import { SkipInterview } from "@/components/onboarding/SkipInterview";
 import { pillPrimary, pillSecondary, usd } from "@/components/onboarding/styles";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
 import { SamLogo } from "@/components/SamLogo";
@@ -44,6 +45,12 @@ export default function OnboardingPage() {
   const [payrollConnected, setPayrollConnected] = useState(false);
   const [monthlyPayrollCostUsd, setMonthlyPayrollCostUsd] = useState<number | null>(null);
   const [gustoStatus, setGustoStatus] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
+  const [skipped, setSkipped] = useState(false);
+
+  const skip = () => {
+    setSkipped(true);
+    setStep("done");
+  };
 
   const refreshConnections = useCallback(async () => {
     setLoadingCash(true);
@@ -209,7 +216,8 @@ export default function OnboardingPage() {
                 </button>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <SkipInterview label="Skip the questions" onSkipped={skip} />
                 <button
                   type="button"
                   onClick={() => setStep("interview")}
@@ -223,7 +231,7 @@ export default function OnboardingPage() {
 
           {step === "interview" && (
             <BlurFade key="interview">
-              <InterviewStep onFinished={() => setStep("review")} />
+              <InterviewStep onFinished={() => setStep("review")} onSkipped={skip} />
             </BlurFade>
           )}
 
@@ -240,8 +248,9 @@ export default function OnboardingPage() {
                   Sam is ready
                 </h1>
                 <p className="max-w-[56ch] leading-relaxed text-muted">
-                  Sam now knows your company and how you like to work. Anything you skipped, Sam will ask about when it
-                  actually matters.
+                  {skipped
+                    ? "Sam will start from your connected accounts and anything you've already said, and learn the rest as you talk."
+                    : "Sam now knows your company and how you like to work. Anything you skipped, Sam will ask about when it actually matters."}
                 </p>
               </div>
               <div className="flex justify-end border-t border-border pt-5">
