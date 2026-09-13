@@ -207,7 +207,7 @@ export function ThreadSidebar({
                 type="button"
                 onClick={onCreate}
                 disabled={creating || locked}
-                title={locked ? "Sam is working in this conversation" : "New conversation"}
+                title={locked ? "Sam is working in this conversation" : "New conversation (⌘N)"}
                 aria-label="New conversation"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-foreground disabled:opacity-50"
               >
@@ -216,7 +216,7 @@ export function ThreadSidebar({
               <button
                 type="button"
                 onClick={onToggleCollapsed}
-                title="Hide sidebar"
+                title="Hide sidebar (⌘B)"
                 aria-label="Hide sidebar"
                 className="hidden h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-foreground md:inline-flex"
               >

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { List, SidebarSimple } from "@phosphor-icons/react";
 
 import { VoicePlaybackProvider, useVoicePlayback } from "@/components/chat/VoicePlayback";
+import { ChartFigure } from "@/components/chat/ChartFigure";
 import { Composer } from "@/components/chat/Composer";
 import { EmptyConversation, MessageList, type ChatNotice, type RunView } from "@/components/chat/MessageList";
 import { ThreadSidebar, threadLabel } from "@/components/chat/ThreadSidebar";
@@ -113,7 +114,7 @@ export function ChatWorkspace(props: { initialThreadId?: string }) {
 }
 
 function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string }) {
-  const { stop: stopPlayback } = useVoicePlayback();
+  const { playback, play: playVoice, stop: stopPlayback } = useVoicePlayback();
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -133,8 +134,8 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
   const [notice, setNotice] = useState<ChatNotice | null>(null);
   /** Activity summaries for answers produced in this session, by message id. */
   const [summaries, setSummaries] = useState<Record<string, string>>({});
-  /** Text handed back to the composer when a send never became a run. */
-  const [draft, setDraft] = useState<{ text: string; key: number } | null>(null);
+  /** The assistant answer currently being presented in the desktop voice stage. */
+  const [voiceStageMessageId, setVoiceStageMessageId] = useState<string | null>(null);
 
   const runAbort = useRef<AbortController | null>(null);
   /** The thread a live run owns; its own reconciliation reads it, not the loader. */
@@ -152,7 +153,9 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
     };
   }, []);
 
+
   const toggleSidebarCollapsed = () => writeCollapsed(!sidebarCollapsed);
+
 
   const refreshThreads = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -223,6 +226,7 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
   const select = (threadId: string) => {
     if (threadId === activeThreadId || run) return;
     stopPlayback();
+    setVoiceStageMessageId(null);
     setNotice(null);
     setSummaries({});
     stickToBottom.current = true;
@@ -230,9 +234,10 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
     setActiveThreadId(threadId);
   };
 
-  const startNewThread = async () => {
-    if (run) return;
+  const startNewThread = useCallback(async () => {
+    if (runAbort.current) return;
     stopPlayback();
+    setVoiceStageMessageId(null);
     setCreating(true);
     setNotice(null);
     try {
@@ -247,7 +252,24 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
     } finally {
       setCreating(false);
     }
-  };
+  }, [stopPlayback]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod || event.defaultPrevented) return;
+      if (event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        if (window.matchMedia(DESKTOP_QUERY).matches) writeCollapsed(!(memoryCollapsed ?? readCollapsed()));
+      }
+      if (event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        void startNewThread();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [startNewThread]);
 
   const rename = async (threadId: string, name: string) => {
     const previous = threads;
@@ -268,6 +290,7 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
       setThreads((current) => current.filter((thread) => thread.id !== threadId));
       if (threadId === activeThreadId) {
         stopPlayback();
+        setVoiceStageMessageId(null);
         setSummaries({});
         setNotice(null);
         setActiveThreadId(null);
@@ -282,7 +305,7 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
     runAbort.current?.abort();
   };
 
-  const send = async (content: string) => {
+  const send = async (content: string, options: { speakAnswer?: boolean } = {}) => {
     if (run) return;
     stopPlayback();
     const controller = new AbortController();
@@ -290,7 +313,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
     stopped.current = false;
     stickToBottom.current = true;
     setNotice(null);
-    setDraft(null);
     setRun({ phase: "submitting", steps: [], text: "" });
     // Optimistic only until the run ends - the persisted row replaces it.
     setMessages((current) => [
@@ -373,13 +395,13 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
         const { messages: persisted } = await loadThread(threadId);
         if (!mounted.current) return;
         setMessages(persisted);
-        // Nothing reached a run and nothing was written: give the words back
-        // rather than making the founder retype them.
-        const lastUserMessage = [...persisted].reverse().find((message) => message.role === "user");
-        if (!outcome && lastUserMessage?.content !== content) setDraft({ text: content, key: Date.now() });
-        if (outcome === "completed" && summary) {
-          const answered = [...persisted].reverse().find((message) => message.role === "assistant");
-          if (answered) setSummaries((current) => ({ ...current, [answered.id]: summary }));
+        const answered = [...persisted].reverse().find((message) => message.role === "assistant");
+        if (outcome === "completed" && answered) {
+          if (summary) setSummaries((current) => ({ ...current, [answered.id]: summary }));
+          if (options.speakAnswer) {
+            setVoiceStageMessageId(answered.id);
+            playVoice(answered.threadId, answered.id);
+          }
         }
       } catch {
         if (!mounted.current) return;
@@ -402,7 +424,6 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
     } else {
       // Nothing reached the server, so nothing was persisted either.
       setMessages((current) => current.filter((message) => !message.id.startsWith("pending-")));
-      setDraft({ text: content, key: Date.now() });
     }
 
     runThread.current = null;
@@ -412,6 +433,18 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? null;
   const hasConversation = messages.length > 0 || run !== null || notice !== null;
+  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant") ?? null;
+  const presentingVoiceAnswer = Boolean(
+    voiceStageMessageId &&
+    playback?.messageId === voiceStageMessageId &&
+    latestAssistant?.id === voiceStageMessageId,
+  );
+  const useHeroVoice = (messages.length === 0 && notice === null) || presentingVoiceAnswer;
+  const voiceCompanion = presentingVoiceAnswer && latestAssistant?.charts?.length ? (
+    <div className="flex flex-col gap-4 text-left">
+      {latestAssistant.charts.map((chart) => <ChartFigure key={chart.id} spec={chart.spec} />)}
+    </div>
+  ) : null;
 
   return (
     <div className="flex h-dvh w-full overflow-hidden">
@@ -446,7 +479,7 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
               type="button"
               onClick={toggleSidebarCollapsed}
               aria-label="Show sidebar"
-              title="Show sidebar"
+              title="Show sidebar (⌘B)"
               className="-ml-2 hidden h-9 w-9 flex-none items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-foreground md:inline-flex"
             >
               <SidebarSimple className="h-[18px] w-[18px]" />
@@ -470,22 +503,53 @@ function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string })
               Loading conversation…
             </p>
           ) : hasConversation ? (
-            <MessageList messages={messages} summaries={summaries} run={run} notice={notice} />
+            useHeroVoice ? (
+              <EmptyConversation
+                run={run}
+                companion={voiceCompanion}
+                voiceControl={
+                  <Composer
+                    onSend={(content) => void send(content, { speakAnswer: true })}
+                    onStop={stop}
+                    running={run !== null}
+                    disabled={messagesLoading}
+                    focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}:hero`}
+                    variant="hero"
+                  />
+                }
+              />
+            ) : (
+              <MessageList messages={messages} summaries={summaries} run={run} notice={notice} />
+            )
           ) : (
-            <EmptyConversation onAsk={send} disabled={messagesLoading} />
+            <EmptyConversation
+              run={run}
+              companion={voiceCompanion}
+              voiceControl={
+                <Composer
+                  onSend={(content) => void send(content, { speakAnswer: true })}
+                  onStop={stop}
+                  running={run !== null}
+                  disabled={messagesLoading}
+                  focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}:hero`}
+                  variant="hero"
+                />
+              }
+            />
           )}
         </div>
 
-        <div className="flex-none border-t border-border pt-4">
-          <Composer
-            onSend={send}
-            onStop={stop}
-            running={run !== null}
-            disabled={messagesLoading}
-            draft={draft}
-            focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}`}
-          />
-        </div>
+        {!useHeroVoice && (
+          <div className="flex-none border-t border-border pt-4">
+            <Composer
+              onSend={(content) => void send(content, { speakAnswer: true })}
+              onStop={stop}
+              running={run !== null}
+              disabled={messagesLoading}
+              focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}`}
+            />
+          </div>
+        )}
       </main>
     </div>
   );

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { ActivitySummary, ActivityTrail } from "@/components/chat/ActivityTrail";
+import { CopyButton } from "@/components/chat/CopyButton";
 import { ListenButton } from "@/components/chat/ListenButton";
 import { ChartFigure } from "@/components/chat/ChartFigure";
 import { Markdown } from "@/components/chat/Markdown";
@@ -18,10 +19,16 @@ import { cn } from "@/lib/utils";
  */
 function UserTurn({ content }: { content: string }) {
   return (
-    <div className="flex justify-end">
+    <div className="group flex flex-col items-end gap-1">
       <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-border bg-surface-strong px-4 py-2.5 text-[15px] leading-relaxed text-foreground">
         {content}
       </p>
+      <CopyButton
+        text={content}
+        label="Copy input"
+        copiedLabel="Input copied"
+        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+      />
     </div>
   );
 }
@@ -55,7 +62,10 @@ function SamTurn({
       {charts.map((chart) => (
         <ChartFigure key={chart.id} spec={chart.spec} />
       ))}
-      {footer}
+      <div className="flex flex-wrap items-center gap-2">
+        <CopyButton text={content} label="Copy answer" copiedLabel="Answer copied" />
+        {footer}
+      </div>
     </div>
   );
 }
@@ -165,32 +175,65 @@ const STARTERS = [
 ];
 
 /** Shown for a brand-new thread, and for `/chat` before anything is selected. */
-export function EmptyConversation({ onAsk, disabled }: { onAsk: (question: string) => void; disabled: boolean }) {
+export function EmptyConversation({
+  voiceControl,
+  onAsk,
+  disabled = false,
+  run,
+  companion,
+}: {
+  voiceControl?: ReactNode;
+  onAsk?: (question: string) => void;
+  disabled?: boolean;
+  run?: RunView | null;
+  companion?: ReactNode;
+}) {
   return (
-    <div className="mx-auto flex w-full max-w-[46rem] flex-1 flex-col items-center justify-center gap-6 px-5 py-16 text-center sm:px-6">
+    <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col items-center justify-center gap-7 px-5 py-16 text-center sm:px-6">
+      <div className="grid w-full items-center gap-8 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.95fr)]">
+        <div className="relative flex flex-col items-center justify-center">
+          {run && run.steps.length > 0 && (
+            <div className="pointer-events-none absolute -right-2 top-1/2 z-0 hidden w-64 -translate-y-1/2 rounded-3xl border border-border bg-surface/80 p-3 text-left shadow-2xl shadow-black/20 backdrop-blur md:block">
+              <ActivityTrail steps={run.steps} starting={run.phase === "submitting"} />
+            </div>
+          )}
+          <div className="relative z-10">{voiceControl}</div>
+        </div>
+        <div className="hidden min-h-[18rem] items-center justify-center md:flex">
+          {companion ? (
+            <div className="w-full animate-in fade-in duration-500">{companion}</div>
+          ) : (
+            <div className="rounded-3xl border border-dashed border-border px-6 py-8 text-left text-[13.5px] leading-relaxed text-muted-2">
+              Visuals Sam creates, like charts or scenario outputs, will appear here while the voice answer plays.
+            </div>
+          )}
+        </div>
+      </div>
       <div className="flex flex-col gap-2">
         <h2 className="text-balance text-2xl font-semibold tracking-tight text-foreground">
-          What do you want to know?
+          Ask Sam out loud.
         </h2>
         <p className="max-w-[42ch] text-[15px] leading-relaxed text-muted">
-          Sam has your company&apos;s numbers. Ask about runway, a hire, a spending change, or a scenario
-          you&apos;re weighing.
+          Sam has your company&apos;s numbers. Tap the orb, ask about runway, hiring, spend, or a scenario,
+          and Sam will answer back by voice.
         </p>
       </div>
-      <ul className="flex flex-col items-center gap-2">
-        {STARTERS.map((question) => (
-          <li key={question}>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onAsk(question)}
-              className="rounded-full border border-border px-4 py-2 text-[13.5px] text-muted transition-colors hover:border-border-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {question}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {onAsk && (
+        <ul className="flex flex-col items-center gap-2">
+          {STARTERS.map((question) => (
+            <li key={question}>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onAsk(question)}
+                className="rounded-full border border-border px-4 py-2 text-[13.5px] text-muted transition-colors hover:border-border-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {question}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

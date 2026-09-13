@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Sam | AI CFO",
-  description: "The AI CFO that knows your company's numbers, not just numbers in general.",
+  description: "Sam handles your startup's finances.",
 };
 
 export default function RootLayout({
