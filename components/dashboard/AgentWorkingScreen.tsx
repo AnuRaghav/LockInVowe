@@ -101,6 +101,9 @@ export function AgentWorkingScreen({
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-[15px] font-medium text-foreground">Sam is reviewing your company</p>
         <p className="text-[13px] text-muted">This only takes a moment.</p>
+        <p role="status" className="sr-only">
+          {completedCount < steps.length ? steps[completedCount].label : "Done"}
+        </p>
       </div>
 
       <ul className="flex w-full flex-col gap-2.5">

@@ -7,10 +7,6 @@ import { SamLogo } from "@/components/SamLogo";
 import { BlurFade } from "@/components/ui/blur-fade";
 import type { DigestInsight } from "@/lib/insights/types";
 
-const TODAY_LABEL = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(
-  new Date(),
-);
-
 /**
  * The daily digest itself - split out of app/dashboard/page.tsx so
  * DashboardReveal can gate it behind the loading screen.
@@ -22,6 +18,9 @@ const TODAY_LABEL = new Intl.DateTimeFormat("en-US", { month: "long", day: "nume
  */
 export function DashboardContent({ insights }: { insights: DigestInsight[] }) {
   const [hero, ...rest] = insights;
+  // Formatted at render, not module load: a module-level date goes stale on a
+  // long-running server and can disagree with the browser's time zone.
+  const today = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date());
 
   return (
     <div className="flex flex-1 flex-col">
@@ -49,19 +48,15 @@ export function DashboardContent({ insights }: { insights: DigestInsight[] }) {
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 pb-24 pt-8">
         <BlurFade className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-[13px] text-muted-2">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-            </span>
-            Sam&apos;s daily digest &middot; {TODAY_LABEL}
-          </div>
+          <p suppressHydrationWarning className="text-[13px] text-muted">
+            Sam&apos;s daily digest, {today}
+          </p>
           <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
             Five things worth knowing today.
           </h1>
           <p className="max-w-[60ch] text-[15px] leading-relaxed text-muted">
-            Sam went through your connected accounts, payroll, and revenue overnight. Here&apos;s
-            what stood out — ask about any of it.
+            Sam went through your connected accounts, payroll, and revenue. Here&apos;s what stood out.
+            Ask about any of it.
           </p>
         </BlurFade>
 

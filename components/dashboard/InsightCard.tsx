@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ChatCircleText, TrendDown, TrendUp, WarningCircle } from "@phosphor-icons/react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
 import { ChartFigure } from "@/components/chat/ChartFigure";
 import { NumberTicker } from "@/components/ui/number-ticker";
@@ -14,6 +14,13 @@ const toneStyles: Record<InsightTone, string> = {
   warning: "border-danger/25 bg-danger-soft",
   critical: "border-danger/40 bg-danger-soft",
   neutral: "border-border bg-surface",
+};
+
+const toneLabel: Record<InsightTone, string | undefined> = {
+  positive: "Good news",
+  warning: "Needs attention",
+  critical: "Urgent",
+  neutral: undefined,
 };
 
 const toneIcon: Record<InsightTone, typeof TrendUp | null> = {
@@ -33,30 +40,27 @@ interface InsightCardProps {
 /** One card in the daily digest: the CFO's note, the number that backs it, and the chart. */
 export function InsightCard({ insight, delay = 0, className }: InsightCardProps) {
   const Icon = toneIcon[insight.tone];
+  const reduceMotion = useReducedMotion();
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14, filter: "blur(6px)" }}
+      initial={reduceMotion ? false : { opacity: 0, y: 14, filter: "blur(6px)" }}
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       transition={{ delay: 0.15 + delay, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        "flex flex-col gap-4 rounded-2xl border p-5 transition-transform duration-200 hover:-translate-y-0.5",
+        "flex flex-col gap-4 rounded-2xl border p-5",
         toneStyles[insight.tone],
         className,
       )}
     >
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-2">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
-          </span>
-          {insight.category}
-        </div>
+        <p className="text-[13px] font-medium text-muted">{insight.category}</p>
         <div className="flex items-start gap-2">
           {Icon && (
             <Icon
               weight="fill"
+              role="img"
+              aria-label={toneLabel[insight.tone]}
               className={cn("mt-0.5 h-4.5 w-4.5 shrink-0", insight.tone === "positive" ? "text-accent" : "text-danger")}
             />
           )}
@@ -70,7 +74,7 @@ export function InsightCard({ insight, delay = 0, className }: InsightCardProps)
             {insight.stat.suffix}
           </span>
         </div>
-        <p className="text-[12.5px] text-muted-2">{insight.stat.label}</p>
+        <p className="text-[12.5px] text-muted">{insight.stat.label}</p>
 
         <p className="text-[13px] leading-relaxed text-muted">{insight.note}</p>
       </div>

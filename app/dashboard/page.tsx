@@ -5,7 +5,7 @@ import { getDailyDigest } from "@/lib/insights/digest";
 
 export const metadata: Metadata = {
   title: "Sam | Dashboard",
-  description: "Your CFO's take, before you ask a single question.",
+  description: "What Sam found in your company's numbers today.",
 };
 
 /**
