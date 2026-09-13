@@ -155,18 +155,16 @@ export function EmptyConversation({
 }) {
   const transitioning = phase !== "idle";
   const fadingOut = phase === "conversation";
-  const active = phase === "activating" || phase === "working";
 
   if (transitioning) {
     return (
-      <div className="pointer-events-none relative isolate h-full w-full overflow-hidden">
+      <div className="pointer-events-none flex h-full w-full items-center justify-center overflow-hidden">
         <SamOrb
-          energy={phase === "activating" ? 0.88 : phase === "working" ? 0.68 : 0.3}
-          points={760}
+          energy={0.3}
+          points={360}
           className={cn(
-            "absolute left-1/2 top-[52%] aspect-square w-[min(88vw,38rem)] -translate-x-1/2 -translate-y-1/2 [mask-image:radial-gradient(circle,black_42%,transparent_78%)] motion-reduce:transition-opacity",
-            active && "sam-first-orb-active opacity-70 transition-opacity duration-700 ease-out",
-            fadingOut && "opacity-0 transition-opacity duration-1000 ease-out",
+            "h-28 w-28 opacity-100 transition-opacity duration-1000 ease-out motion-reduce:transition-opacity sm:h-32 sm:w-32",
+            fadingOut && "opacity-0",
           )}
         />
       </div>

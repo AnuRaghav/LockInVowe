@@ -305,7 +305,10 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
   const send = async (content: string) => {
     if (run || runAbort.current) return;
     const firstMessageInThread = messages.length === 0 && !run && !messagesLoading;
-    if (firstMessageInThread) setFirstMessagePhase("activating");
+    if (firstMessageInThread) {
+      setFirstMessagePhase("working");
+      requestAnimationFrame(() => finishFirstMessagePresence());
+    }
 
     const controller = new AbortController();
     runAbort.current = controller;
@@ -342,7 +345,6 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
             if (event.threadId !== activeThreadId) setActiveThreadId(event.threadId);
             break;
           case "run_started":
-            if (firstMessageInThread) setFirstMessagePhase("working");
             setRun((current) => (current ? { ...current, phase: "working" } : current));
             break;
           case "activity":
