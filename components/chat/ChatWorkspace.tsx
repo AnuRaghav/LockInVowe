@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { List } from "@phosphor-icons/react";
 
 import { Composer } from "@/components/chat/Composer";
-import { EmptyConversation, MessageList } from "@/components/chat/MessageList";
+import { EmptyConversation, MessageList, type ChatNotice, type RunView } from "@/components/chat/MessageList";
 import { ThreadSidebar, threadLabel } from "@/components/chat/ThreadSidebar";
+import { applyActivityEvent, summarizeActivity, type ActivityStep } from "@/lib/chat/activity";
 import {
+  ChatRequestError,
   createThread,
   listThreads,
   loadThread,
@@ -14,36 +17,99 @@ import {
   type ChatThread,
 } from "@/lib/chat/client";
 
-const describe = (error: unknown) => (error instanceof Error ? error.message : "Something went wrong.");
+/** Terminal outcomes the harness reports, said plainly and without blame. */
+const TERMINATION_NOTICE: Record<string, ChatNotice> = {
+  cancelled: { tone: "muted", text: "Stopped." },
+  timeout: {
+    tone: "error",
+    text: "That took longer than Sam is allowed to spend on one question. Try narrowing it and ask again.",
+  },
+  max_model_calls: {
+    tone: "error",
+    text: "Sam ran out of room working through that one. Try asking for a piece of it at a time.",
+  },
+  max_tool_calls: {
+    tone: "error",
+    text: "Sam ran out of room working through that one. Try asking for a piece of it at a time.",
+  },
+  no_progress: {
+    tone: "error",
+    text: "Sam stopped making progress on that one. Try rephrasing the question.",
+  },
+};
+
+const terminationNotice = (outcome: string): ChatNotice =>
+  TERMINATION_NOTICE[outcome] ?? {
+    tone: "error",
+    text: "Something broke while Sam was working, so there's no answer to trust here. Try again in a moment.",
+  };
+
+const requestNotice = (error: unknown): ChatNotice => {
+  if (error instanceof ChatRequestError) {
+    if (error.status === 409) {
+      return { tone: "error", text: "Sam is still working on the last question in this conversation." };
+    }
+    if (error.status === 401) {
+      return { tone: "error", text: "Your session expired. Sign in again to keep talking to Sam." };
+    }
+    return { tone: "error", text: error.message };
+  }
+  return { tone: "error", text: "Sam could not be reached. Check your connection and try again." };
+};
 
 /**
  * The Sam conversation workspace.
  *
- * The server is the only source of conversation truth: every thread list and
- * every message list here comes from `/api/threads`, and a turn is re-read
- * from the database once its run ends rather than kept from what streamed.
- * Local state is a view of that, which is why a refresh restores everything.
+ * Two rules hold the whole thing together. The server is the only authority
+ * on conversation content: the browser sends one message and a thread id,
+ * never a transcript, and every turn is re-read from the database once its run
+ * ends. And a run that did not produce an answer never leaves one behind -
+ * a cancelled or failed run keeps the founder's message, drops whatever had
+ * streamed, and says what happened.
+ *
+ * The financial model Sam reasons over is built during onboarding and reached
+ * entirely through the backend; nothing about it is assembled, cached, or
+ * second-guessed here.
  */
 export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string }) {
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(Boolean(initialThreadId));
 
-  const [running, setRunning] = useState(false);
-  const [streamingText, setStreamingText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [run, setRun] = useState<RunView | null>(null);
+  const [notice, setNotice] = useState<ChatNotice | null>(null);
+  /** Activity summaries for answers produced in this session, by message id. */
+  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  /** Text handed back to the composer when a send never became a run. */
+  const [draft, setDraft] = useState<{ text: string; key: number } | null>(null);
 
   const runAbort = useRef<AbortController | null>(null);
+  /** The thread a live run owns; its own reconciliation reads it, not the loader. */
+  const runThread = useRef<string | null>(null);
+  const stopped = useRef(false);
+  const mounted = useRef(true);
+  const scroller = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      runAbort.current?.abort();
+    };
+  }, []);
 
   const refreshThreads = useCallback(async (signal?: AbortSignal) => {
     try {
-      setThreads(await listThreads(signal));
-    } catch (cause) {
-      if (!signal?.aborted) setError(describe(cause));
+      const listed = await listThreads(signal);
+      if (!signal?.aborted) setThreads(listed);
+    } catch (error) {
+      if (!signal?.aborted) setNotice(requestNotice(error));
     } finally {
       if (!signal?.aborted) setThreadsLoading(false);
     }
@@ -67,17 +133,20 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
         setMessagesLoading(false);
         return;
       }
+      // A run that just created this thread is already streaming into it;
+      // re-reading here would blank the answer mid-flight.
+      if (runThread.current === activeThreadId) {
+        setMessagesLoading(false);
+        return;
+      }
       setMessagesLoading(true);
       try {
         const { messages: loaded } = await loadThread(activeThreadId, controller.signal);
-        if (!controller.signal.aborted) {
-          setMessages(loaded);
-          setError(null);
-        }
-      } catch (cause) {
+        if (!controller.signal.aborted) setMessages(loaded);
+      } catch (error) {
         if (!controller.signal.aborted) {
           setMessages([]);
-          setError(describe(cause));
+          setNotice(requestNotice(error));
         }
       } finally {
         if (!controller.signal.aborted) setMessagesLoading(false);
@@ -95,38 +164,54 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
     }
   }, [activeThreadId]);
 
-  useEffect(() => () => runAbort.current?.abort(), []);
+  // Follow the answer as it streams, but never yank a founder who scrolled up.
+  useEffect(() => {
+    const node = scroller.current;
+    if (node && stickToBottom.current) node.scrollTop = node.scrollHeight;
+  }, [messages, run, messagesLoading]);
 
   const select = (threadId: string) => {
-    if (threadId === activeThreadId || running) return;
-    setStreamingText("");
+    if (threadId === activeThreadId || run) return;
+    setNotice(null);
+    setSummaries({});
+    stickToBottom.current = true;
+    setSidebarOpen(false);
     setActiveThreadId(threadId);
   };
 
   const startNewThread = async () => {
-    if (running) return;
+    if (run) return;
     setCreating(true);
-    setError(null);
+    setNotice(null);
     try {
       const thread = await createThread();
       setThreads((current) => [thread, ...current]);
-      setStreamingText("");
+      setSummaries({});
+      stickToBottom.current = true;
+      setSidebarOpen(false);
       setActiveThreadId(thread.id);
-    } catch (cause) {
-      setError(describe(cause));
+    } catch (error) {
+      setNotice(requestNotice(error));
     } finally {
       setCreating(false);
     }
   };
 
+  const stop = () => {
+    stopped.current = true;
+    runAbort.current?.abort();
+  };
+
   const send = async (content: string) => {
-    if (running) return;
+    if (run) return;
     const controller = new AbortController();
     runAbort.current = controller;
-    setError(null);
-    setRunning(true);
-    setStreamingText("");
-    // Optimistic only until the run ends - the authoritative row replaces it.
+    stopped.current = false;
+    stickToBottom.current = true;
+    setNotice(null);
+    setDraft(null);
+    setRun({ phase: "submitting", steps: [], text: "" });
+    // Optimistic only until the run ends - the persisted row replaces it.
     setMessages((current) => [
       ...current,
       {
@@ -139,37 +224,112 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
     ]);
 
     let threadId = activeThreadId;
+    let steps: ActivityStep[] = [];
+    let answer = "";
+    let outcome: "completed" | "terminated" | null = null;
+    let terminal: ChatNotice | null = null;
+
     try {
       for await (const event of sendMessage({ content, threadId: threadId ?? undefined, signal: controller.signal })) {
-        if (event.type === "thread") {
-          threadId = event.threadId;
-          if (event.threadId !== activeThreadId) setActiveThreadId(event.threadId);
+        switch (event.type) {
+          case "thread":
+            threadId = event.threadId;
+            runThread.current = event.threadId;
+            // A turn sent from the empty state created the thread server-side.
+            if (event.threadId !== activeThreadId) setActiveThreadId(event.threadId);
+            break;
+          case "run_started":
+            setRun((current) => (current ? { ...current, phase: "working" } : current));
+            break;
+          case "activity":
+            steps = applyActivityEvent(steps, event.activity);
+            setRun((current) => (current ? { ...current, steps } : current));
+            break;
+          case "delta":
+            answer += event.text;
+            setRun((current) => (current ? { ...current, text: answer } : current));
+            break;
+          case "run_completed":
+            outcome = "completed";
+            setRun((current) => (current ? { ...current, phase: "settling" } : current));
+            break;
+          case "run_terminated":
+            // A terminated run persists no answer, and the apology the route
+            // streams after this frame is not one either - drop what streamed
+            // and let the notice say what happened.
+            outcome = "terminated";
+            terminal = terminationNotice(event.outcome);
+            answer = "";
+            setRun((current) => (current ? { ...current, phase: "settling", text: "" } : current));
+            break;
         }
-        if (event.type === "delta") setStreamingText((current) => current + event.text);
       }
-    } catch (cause) {
-      if (!controller.signal.aborted) setError(describe(cause));
-    } finally {
-      runAbort.current = null;
-      setRunning(false);
-      setStreamingText("");
-      if (threadId && !controller.signal.aborted) {
-        try {
-          const { messages: persisted } = await loadThread(threadId);
-          setMessages(persisted);
-        } catch (cause) {
-          setError(describe(cause));
-        }
-        // A turn sent from the empty state created the thread server-side.
-        if (!threads.some((thread) => thread.id === threadId)) void refreshThreads();
-      } else if (!threadId) {
-        setMessages((current) => current.filter((message) => !message.id.startsWith("pending-")));
+    } catch (error) {
+      if (stopped.current || controller.signal.aborted) {
+        outcome = "terminated";
+        terminal = TERMINATION_NOTICE.cancelled;
+      } else {
+        terminal = requestNotice(error);
       }
+      answer = outcome === "completed" ? answer : "";
+      setRun((current) => (current ? { ...current, phase: "settling", text: "" } : current));
     }
+
+    if (!outcome && !terminal) {
+      // The body ended without a terminal frame; there is no answer to trust.
+      terminal = terminationNotice("failed");
+      answer = "";
+      setRun((current) => (current ? { ...current, phase: "settling", text: "" } : current));
+    }
+
+    runAbort.current = null;
+    if (!mounted.current) return;
+
+    const summary = summarizeActivity(steps);
+    if (threadId) {
+      // The database, not the stream, decides what this thread now contains.
+      try {
+        const { messages: persisted } = await loadThread(threadId);
+        if (!mounted.current) return;
+        setMessages(persisted);
+        // Nothing reached a run and nothing was written: give the words back
+        // rather than making the founder retype them.
+        const lastUserMessage = [...persisted].reverse().find((message) => message.role === "user");
+        if (!outcome && lastUserMessage?.content !== content) setDraft({ text: content, key: Date.now() });
+        if (outcome === "completed" && summary) {
+          const answered = [...persisted].reverse().find((message) => message.role === "assistant");
+          if (answered) setSummaries((current) => ({ ...current, [answered.id]: summary }));
+        }
+      } catch {
+        if (!mounted.current) return;
+        // The answer was persisted even though this read failed; keep it visible.
+        if (outcome === "completed" && answer) {
+          setMessages((current) => [
+            ...current,
+            {
+              id: `local-${Date.now()}`,
+              threadId,
+              role: "assistant",
+              content: answer,
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+        }
+      }
+      if (!threads.some((thread) => thread.id === threadId)) void refreshThreads();
+    } else {
+      // Nothing reached the server, so nothing was persisted either.
+      setMessages((current) => current.filter((message) => !message.id.startsWith("pending-")));
+      setDraft({ text: content, key: Date.now() });
+    }
+
+    runThread.current = null;
+    setRun(null);
+    setNotice(terminal);
   };
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? null;
-  const hasConversation = messages.length > 0 || running;
+  const hasConversation = messages.length > 0 || run !== null || notice !== null;
 
   return (
     <div className="flex h-dvh w-full overflow-hidden">
@@ -178,35 +338,56 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
         activeThreadId={activeThreadId}
         loading={threadsLoading}
         creating={creating}
+        locked={run !== null}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
         onSelect={select}
         onCreate={startNewThread}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 flex-none items-center border-b border-border px-6">
+        <header className="flex h-16 flex-none items-center gap-2 border-b border-border px-5 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Show conversations"
+            className="-ml-2 inline-flex h-9 w-9 flex-none items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-foreground md:hidden"
+          >
+            <List className="h-[18px] w-[18px]" />
+          </button>
           <h1 className="truncate text-[15px] font-medium text-foreground">
             {activeThread ? threadLabel(activeThread) : "New conversation"}
           </h1>
         </header>
 
-        {error && (
-          <p role="alert" className="mx-auto w-full max-w-[46rem] px-6 pt-4 text-[13px] text-danger">
-            {error}
-          </p>
-        )}
-
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {messagesLoading ? (
-            <p className="mx-auto w-full max-w-[46rem] px-6 py-10 text-[13px] text-muted-2">Loading conversation…</p>
+        <div
+          ref={scroller}
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+          }}
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+        >
+          {messagesLoading && !run ? (
+            <p className="mx-auto w-full max-w-[46rem] px-5 py-10 text-[13px] text-muted-2 sm:px-6">
+              Loading conversation…
+            </p>
           ) : hasConversation ? (
-            <MessageList messages={messages} streamingText={streamingText} running={running} />
+            <MessageList messages={messages} summaries={summaries} run={run} notice={notice} />
           ) : (
-            <EmptyConversation hint="Sam answers from your connected accounts and the financial model you set up in onboarding — runway, hiring, spend, growth." />
+            <EmptyConversation onAsk={send} disabled={messagesLoading} />
           )}
         </div>
 
         <div className="flex-none border-t border-border pt-4">
-          <Composer onSend={send} running={running} disabled={messagesLoading} />
+          <Composer
+            onSend={send}
+            onStop={stop}
+            running={run !== null}
+            disabled={messagesLoading}
+            draft={draft}
+            focusKey={`${activeThreadId ?? "new"}:${run ? "running" : "idle"}`}
+          />
         </div>
       </main>
     </div>

@@ -1,20 +1,74 @@
 /**
  * Reader for the AI SDK data-stream protocol that `app/api/chat/route.ts`
- * already speaks. Only the two frames the chat workspace needs are surfaced:
- * `0:` text deltas and the `2:` data frame carrying the thread id the server
- * committed the turn to. Everything else (tool lifecycle events) is ignored
- * here rather than reshaped, so the streaming contract stays the server's.
+ * already speaks: `0:` frames carry visible assistant text, `2:` frames carry
+ * the run lifecycle events the route has already stripped down to what is safe
+ * to show. Nothing is reconstructed here - an unrecognised frame is dropped
+ * rather than guessed at, so the server stays the only authority on what a run
+ * is allowed to say about itself.
  */
 
+/** Tool lifecycle, as much of it as the server chooses to expose. */
+export interface ChatActivityEvent {
+  type: "tool_started" | "tool_awaiting_approval" | "tool_completed" | "tool_failed";
+  callId: string;
+  name: string;
+  /** The tool's own declared phrasing, never derived from its arguments. */
+  label?: string;
+  /** Present only where a tool declared a sanitized summary. */
+  summary?: string;
+  critical?: boolean;
+}
+
 export type ChatStreamEvent =
+  | { type: "thread"; threadId: string }
   | { type: "delta"; text: string }
-  | { type: "thread"; threadId: string };
+  | { type: "run_started"; runId: string }
+  | { type: "run_completed"; degraded: boolean }
+  | { type: "run_terminated"; outcome: string }
+  | { type: "activity"; activity: ChatActivityEvent };
+
+const string = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+
+const ACTIVITY_TYPES = new Set<ChatActivityEvent["type"]>([
+  "tool_started",
+  "tool_awaiting_approval",
+  "tool_completed",
+  "tool_failed",
+]);
 
 const dataFrameEvent = (value: unknown): ChatStreamEvent | null => {
   if (!value || typeof value !== "object") return null;
-  const frame = value as { type?: unknown; threadId?: unknown };
-  if (frame.type === "thread" && typeof frame.threadId === "string") {
-    return { type: "thread", threadId: frame.threadId };
+  const frame = value as Record<string, unknown>;
+  const type = string(frame.type);
+  if (!type) return null;
+
+  if (type === "thread") {
+    const threadId = string(frame.threadId);
+    return threadId ? { type: "thread", threadId } : null;
+  }
+  if (type === "run_started") {
+    const runId = string(frame.runId);
+    return runId ? { type: "run_started", runId } : null;
+  }
+  if (type === "run_completed") return { type: "run_completed", degraded: frame.degraded === true };
+  if (type === "run_terminated") {
+    return { type: "run_terminated", outcome: string(frame.outcome) ?? "failed" };
+  }
+  if (ACTIVITY_TYPES.has(type as ChatActivityEvent["type"])) {
+    const callId = string(frame.callId);
+    const name = string(frame.name);
+    if (!callId || !name) return null;
+    return {
+      type: "activity",
+      activity: {
+        type: type as ChatActivityEvent["type"],
+        callId,
+        name,
+        label: string(frame.label),
+        summary: string(frame.summary),
+        critical: frame.critical === true,
+      },
+    };
   }
   return null;
 };
