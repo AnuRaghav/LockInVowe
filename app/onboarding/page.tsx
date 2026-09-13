@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowClockwise, ArrowLeft, Bank, Check, CreditCard, Plus, Users, X } from "@phosphor-icons/react";
 
+import { GustoLinkButton } from "@/components/GustoLinkButton";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
 import { SamOrb } from "@/components/SamOrb";
+import { StripeLinkButton } from "@/components/StripeLinkButton";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { calculateRunway, type RunwayStatus } from "@/lib/finance/runway";
@@ -25,6 +27,13 @@ const STEPS = [
 type StepKey = (typeof STEPS)[number]["key"];
 
 const emptyHire = (): PlannedHireDraft => ({ title: "", startDate: "", monthlyCostUsd: "" });
+
+/** Someone already on payroll, as the Model step edits them (numbers kept as input strings). */
+interface TeamMemberDraft extends PlannedHireDraft {
+  name: string;
+}
+
+const emptyMember = (): TeamMemberDraft => ({ ...emptyHire(), name: "" });
 
 const STATUS_LABEL: Record<RunwayStatus, string> = {
   cash_flow_positive: "Cash flow positive",
@@ -94,12 +103,22 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<StepKey>("connect");
   const [cashOnHandUsd, setCashOnHandUsd] = useState<number | null>(null);
   const [loadingCash, setLoadingCash] = useState(false);
+  const [stripeConnected, setStripeConnected] = useState(false);
+  const [payrollConnected, setPayrollConnected] = useState(false);
+  const [monthlyPayrollCostUsd, setMonthlyPayrollCostUsd] = useState<number | null>(null);
+  const [gustoStatus, setGustoStatus] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
 
   const [mrrUsd, setMrrUsd] = useState("");
+  const [mrrTouched, setMrrTouched] = useState(false);
   const [monthlyExpensesUsd, setMonthlyExpensesUsd] = useState("");
   const [monthlyGrowthTargetPct, setMonthlyGrowthTargetPct] = useState("");
   const [minimumRunwayMonths, setMinimumRunwayMonths] = useState("12");
   const [plannedHires, setPlannedHires] = useState<PlannedHireDraft[]>([]);
+  // null until payroll is connected; seeded from Gusto (or the founder's saved
+  // edits) and then owned by the founder once they touch it.
+  const [team, setTeam] = useState<TeamMemberDraft[] | null>(null);
+  const [teamTouched, setTeamTouched] = useState(false);
+  const [teamSource, setTeamSource] = useState<"founder" | "gusto" | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,18 +130,69 @@ export default function OnboardingPage() {
       const res = await fetch("/api/onboarding");
       const data = await res.json();
       setCashOnHandUsd(typeof data.cashOnHandUsd === "number" ? data.cashOnHandUsd : null);
+      setStripeConnected(Boolean(data.stripeConnected));
+      setPayrollConnected(Boolean(data.payrollConnected));
+      setMonthlyPayrollCostUsd(
+        typeof data.monthlyPayrollCostUsd === "number" ? data.monthlyPayrollCostUsd : null,
+      );
+      // Only prefill from Stripe's derived revenue while the founder hasn't
+      // typed their own number - never clobber a value they're editing.
+      setMrrUsd((current) => {
+        if (mrrTouched || current.trim() !== "") return current;
+        return typeof data.mrrUsd === "number" ? String(data.mrrUsd) : current;
+      });
+      if (!teamTouched && Array.isArray(data.currentTeam)) {
+        setTeamSource(data.currentTeamSource ?? null);
+        setTeam(
+          data.currentTeam.map(
+            (member: { name: string; title: string; startDate: string; monthlyCostUsd: number }) => ({
+              name: member.name,
+              title: member.title,
+              startDate: member.startDate,
+              monthlyCostUsd: String(member.monthlyCostUsd),
+            }),
+          ),
+        );
+      }
     } catch {
-      // Bank isn't connected yet, or the fetch failed - the founder can still
-      // continue and enter everything by hand.
+      // No connectors are linked yet, or the fetch failed - the founder can
+      // still continue and enter everything by hand.
     } finally {
       setLoadingCash(false);
     }
-  }, []);
+  }, [mrrTouched, teamTouched]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch on mount, not a derived-state sync
     void refreshCash();
   }, [refreshCash]);
+
+  // Gusto's OAuth leaves the page and comes back through
+  // app/api/gusto/callback, which has already run the first sync. Read the
+  // outcome it left in the URL once, then clear it so a refresh doesn't replay it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get("gustoError");
+    const syncError = params.get("gustoSyncError");
+    const linked = params.get("gustoLinked");
+    if (!error && !linked) return;
+
+    if (error) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of the OAuth return params
+      setGustoStatus({ tone: "error", message: `Couldn't connect Gusto: ${error}` });
+    } else if (syncError) {
+      setGustoStatus({ tone: "error", message: `Connected, but the first sync failed: ${syncError}` });
+    } else {
+      const employees = params.get("gustoEmployees") ?? "0";
+      setGustoStatus({ tone: "ok", message: `Synced ${employees} employees from Gusto.` });
+    }
+
+    const url = new URL(window.location.href);
+    ["gustoError", "gustoSyncError", "gustoLinked", "gustoEmployees", "gustoPayrolls"].forEach((key) =>
+      url.searchParams.delete(key),
+    );
+    window.history.replaceState({}, "", url.toString());
+  }, []);
 
   const updateHire = (index: number, patch: Partial<PlannedHireDraft>) => {
     setPlannedHires((hires) => hires.map((hire, i) => (i === index ? { ...hire, ...patch } : hire)));
@@ -132,11 +202,24 @@ export default function OnboardingPage() {
     setPlannedHires((hires) => hires.filter((_, i) => i !== index));
   };
 
+  const editTeam = (edit: (members: TeamMemberDraft[]) => TeamMemberDraft[]) => {
+    setTeamTouched(true);
+    setTeam((members) => edit(members ?? []));
+  };
+
+  const teamTotalUsd =
+    team === null ? null : Math.round(team.reduce((sum, member) => sum + (Number(member.monthlyCostUsd) || 0), 0));
+  // The team, once loaded, is the payroll figure: edits to it are corrections to Gusto.
+  const payrollUsd = teamTotalUsd ?? monthlyPayrollCostUsd;
+
   const parsedMrr = Number(mrrUsd) || 0;
-  const parsedExpenses = Number(monthlyExpensesUsd) || 0;
+  // With payroll known, the typed field is everything *except* payroll, and burn
+  // is the two added together. Without it, the field is total expenses as before.
+  const otherExpensesUsd = Number(monthlyExpensesUsd) || 0;
+  const parsedExpenses = otherExpensesUsd + (payrollUsd ?? 0);
   const parsedFloor = Number(minimumRunwayMonths) || 0;
   const preview =
-    cashOnHandUsd !== null && (mrrUsd || monthlyExpensesUsd)
+    cashOnHandUsd !== null && (mrrUsd || monthlyExpensesUsd || payrollUsd)
       ? calculateRunway({
           cashOnHandUsd,
           monthlyRevenueUsd: parsedMrr,
@@ -151,7 +234,8 @@ export default function OnboardingPage() {
   const incompleteHire = plannedHires.some(
     (hire) => !hire.title.trim() || !hire.startDate.trim() || !hire.monthlyCostUsd.trim(),
   );
-  const canSubmitQuestions = !missingCore && !incompleteHire;
+  const incompleteMember = (team ?? []).some((member) => !member.name.trim() || !member.monthlyCostUsd.trim());
+  const canSubmitQuestions = !missingCore && !incompleteHire && !incompleteMember;
 
   const submit = async () => {
     setSaving(true);
@@ -170,6 +254,14 @@ export default function OnboardingPage() {
             startDate: hire.startDate,
             monthlyCostUsd: Number(hire.monthlyCostUsd) || 0,
           })),
+          ...(team !== null && {
+            currentTeam: team.map((member) => ({
+              name: member.name,
+              title: member.title,
+              startDate: member.startDate,
+              monthlyCostUsd: Number(member.monthlyCostUsd) || 0,
+            })),
+          }),
         }),
       });
       const data = await res.json();
@@ -225,7 +317,7 @@ export default function OnboardingPage() {
                   Connect where your money lives
                 </h1>
                 <p className="max-w-[56ch] leading-relaxed text-muted">
-                  Sam reads your current cash balance automatically, so you don&apos;t have to type it in.
+                  Sam reads your cash, revenue, and payroll automatically, so you don&apos;t have to type them in.
                 </p>
               </div>
 
@@ -247,24 +339,52 @@ export default function OnboardingPage() {
                     <PlaidLinkButton onLinked={refreshCash} />
                   )}
                 </li>
-                {[
-                  { icon: CreditCard, name: "Stripe", sub: "Revenue and subscriptions" },
-                  { icon: Users, name: "Payroll", sub: "Headcount and loaded cost" },
-                ].map(({ icon: Icon, name, sub }) => (
-                  <li
-                    key={name}
-                    className="flex items-center gap-4 rounded-2xl border border-dashed border-border p-4"
-                  >
-                    <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-white/[0.05] text-muted-2">
-                      <Icon weight="duotone" className="h-5 w-5" />
+                <li className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-border bg-white/[0.03] p-4">
+                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-accent-soft text-accent">
+                    <CreditCard weight="duotone" className="h-5 w-5" />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-[15px] font-medium text-foreground">Stripe</span>
+                    <span className="text-[13px] text-muted-2">Revenue via balance transactions</span>
+                  </span>
+                  {stripeConnected ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1.5 text-[13px] font-medium text-accent">
+                      <Check weight="bold" className="h-3.5 w-3.5" />
+                      Connected
                     </span>
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-[15px] font-medium text-muted">{name}</span>
-                      <span className="text-[13px] text-muted-2">{sub}</span>
+                  ) : (
+                    <StripeLinkButton onLinked={refreshCash} />
+                  )}
+                </li>
+                <li className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-border bg-white/[0.03] p-4">
+                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-accent-soft text-accent">
+                    <Users weight="duotone" className="h-5 w-5" />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-[15px] font-medium text-foreground">Payroll</span>
+                    <span className="text-[13px] text-muted-2">
+                      {payrollConnected && monthlyPayrollCostUsd !== null
+                        ? `${usd(monthlyPayrollCostUsd)} / mo payroll via Gusto`
+                        : "Headcount and loaded cost via Gusto"}
                     </span>
-                    <span className="text-[13px] text-muted-2">Coming soon</span>
-                  </li>
-                ))}
+                    {gustoStatus && (
+                      <span
+                        role="status"
+                        className={cn("mt-1 text-[13px]", gustoStatus.tone === "error" ? "text-danger" : "text-muted")}
+                      >
+                        {gustoStatus.message}
+                      </span>
+                    )}
+                  </span>
+                  {payrollConnected ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1.5 text-[13px] font-medium text-accent">
+                      <Check weight="bold" className="h-3.5 w-3.5" />
+                      Connected
+                    </span>
+                  ) : (
+                    <GustoLinkButton />
+                  )}
+                </li>
               </ul>
 
               <div
@@ -320,14 +440,25 @@ export default function OnboardingPage() {
               <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2">
                 <MoneyField
                   label="Monthly recurring revenue"
-                  help="What you bill each month today."
+                  help={
+                    stripeConnected
+                      ? "Prefilled from Stripe's last 30 days - adjust if it's not representative."
+                      : "What you bill each month today."
+                  }
                   prefix="$"
                   value={mrrUsd}
-                  onChange={setMrrUsd}
+                  onChange={(v) => {
+                    setMrrTouched(true);
+                    setMrrUsd(v);
+                  }}
                 />
                 <MoneyField
-                  label="Monthly operating expenses"
-                  help="Average over the last few months."
+                  label={payrollUsd !== null ? "Other monthly expenses" : "Monthly operating expenses"}
+                  help={
+                    payrollUsd !== null
+                      ? `Rent, software, everything except payroll. Your team's ${usd(payrollUsd)} / mo is added automatically.`
+                      : "Average over the last few months."
+                  }
                   prefix="$"
                   value={monthlyExpensesUsd}
                   onChange={setMonthlyExpensesUsd}
@@ -347,6 +478,106 @@ export default function OnboardingPage() {
                   onChange={setMinimumRunwayMonths}
                 />
               </div>
+
+              {team !== null && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col">
+                      <h2 className="text-sm font-medium text-foreground">Current team</h2>
+                      <p className="text-[13px] text-muted-2">
+                        {teamSource === "founder" && !teamTouched ? "Your saved edits" : "From Gusto"} ·{" "}
+                        {team.length} {team.length === 1 ? "person" : "people"} · {usd(teamTotalUsd ?? 0)} / mo
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => editTeam((members) => [...members, emptyMember()])}
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium text-accent transition-colors hover:text-accent-strong"
+                    >
+                      <Plus weight="bold" className="h-3.5 w-3.5" />
+                      Add person
+                    </button>
+                  </div>
+                  {team.length === 0 ? (
+                    <p className="rounded-2xl border border-dashed border-border px-4 py-5 text-sm text-muted-2">
+                      No one on payroll. Add people to include their cost.
+                    </p>
+                  ) : (
+                    <ul className="flex max-h-[28rem] flex-col gap-2 overflow-y-auto pr-1">
+                      {team.map((member, i) => (
+                        <li
+                          key={i}
+                          className="grid grid-cols-2 items-end gap-3 rounded-2xl border border-border bg-white/[0.03] p-3 sm:grid-cols-[1.1fr_1.1fr_0.9fr_0.8fr_auto]"
+                        >
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-[13px] text-muted">Name</span>
+                            <input
+                              value={member.name}
+                              placeholder="Alex Kim"
+                              onChange={(e) =>
+                                editTeam((members) =>
+                                  members.map((m, j) => (j === i ? { ...m, name: e.target.value } : m)),
+                                )
+                              }
+                              className={cn(inputBase, "px-3 py-2 text-sm")}
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-[13px] text-muted">Role</span>
+                            <input
+                              value={member.title}
+                              placeholder="Engineer"
+                              onChange={(e) =>
+                                editTeam((members) =>
+                                  members.map((m, j) => (j === i ? { ...m, title: e.target.value } : m)),
+                                )
+                              }
+                              className={cn(inputBase, "px-3 py-2 text-sm")}
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-[13px] text-muted">Start date</span>
+                            <input
+                              type="date"
+                              value={member.startDate}
+                              onChange={(e) =>
+                                editTeam((members) =>
+                                  members.map((m, j) => (j === i ? { ...m, startDate: e.target.value } : m)),
+                                )
+                              }
+                              className={cn(inputBase, "px-3 py-2 text-sm")}
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-[13px] text-muted">Monthly cost</span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              value={member.monthlyCostUsd}
+                              onChange={(e) =>
+                                editTeam((members) =>
+                                  members.map((m, j) => (j === i ? { ...m, monthlyCostUsd: e.target.value } : m)),
+                                )
+                              }
+                              className={cn(inputBase, "px-3 py-2 text-sm")}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => editTeam((members) => members.filter((_, j) => j !== i))}
+                            aria-label={`Remove ${member.name || "person"}`}
+                            className="col-span-2 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl text-sm text-muted-2 transition-colors hover:bg-danger-soft hover:text-danger sm:col-span-1 sm:w-10"
+                          >
+                            <X weight="bold" className="h-4 w-4" />
+                            <span className="sm:hidden">Remove</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
@@ -434,6 +665,7 @@ export default function OnboardingPage() {
                     </p>
                     <p className="mt-1 text-[13px] text-muted">
                       {usd(cashOnHandUsd ?? 0)} cash, {usd(parsedMrr)} in, {usd(parsedExpenses)} out each month
+                      {payrollUsd !== null && ` (${usd(payrollUsd)} payroll + ${usd(otherExpensesUsd)} other)`}
                     </p>
                   </div>
                   <span
@@ -457,7 +689,11 @@ export default function OnboardingPage() {
                 )}
                 {!canSubmitQuestions && (
                   <p className="text-[13px] text-muted-2 sm:text-right">
-                    {missingCore ? "Fill in all four numbers to save." : "Finish or remove the open hire to save."}
+                    {missingCore
+                      ? "Fill in all four numbers to save."
+                      : incompleteMember
+                        ? "Every team member needs a name and monthly cost."
+                        : "Finish or remove the open hire to save."}
                   </p>
                 )}
                 <div className="flex items-center justify-between gap-3">
@@ -492,12 +728,18 @@ export default function OnboardingPage() {
 
               <div className="grid gap-6 sm:grid-cols-2">
                 <section>
-                  <h2 className="text-[13px] text-muted-2">Observed from your bank</h2>
+                  <h2 className="text-[13px] text-muted-2">Observed from your connections</h2>
                   <dl className="mt-3 flex flex-col">
                     <div className="flex items-baseline justify-between gap-3 border-b border-border py-2.5">
                       <dt className="text-sm text-muted">Cash on hand</dt>
                       <dd className="text-[15px] font-medium tabular-nums text-foreground">
                         {cashOnHandUsd !== null ? usd(cashOnHandUsd) : "Not connected"}
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3 border-b border-border py-2.5">
+                      <dt className="text-sm text-muted">Monthly payroll</dt>
+                      <dd className="text-[15px] font-medium tabular-nums text-foreground">
+                        {payrollUsd !== null ? usd(payrollUsd) : "Not connected"}
                       </dd>
                     </div>
                     {preview?.runwayMonths != null && (
@@ -515,9 +757,10 @@ export default function OnboardingPage() {
                   <dl className="mt-3 flex flex-col">
                     {[
                       ["MRR", usd(parsedMrr)],
-                      ["Monthly expenses", usd(parsedExpenses)],
+                      ["Monthly expenses", payrollUsd !== null ? `${usd(parsedExpenses)} incl. payroll` : usd(parsedExpenses)],
                       ["Growth target", `${Number(monthlyGrowthTargetPct) || 0}% / mo`],
                       ["Runway floor", `${parsedFloor} months`],
+                      ...(team !== null ? [["Current team", `${team.length} people`]] : []),
                       ["Planned hires", String(plannedHires.length)],
                     ].map(([k, v], i, arr) => (
                       <div

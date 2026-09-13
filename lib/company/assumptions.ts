@@ -16,6 +16,7 @@ export const ASSUMPTION_KEYS = {
   minimumRunwayMonths: "minimum_runway_months",
   plannedHires: "planned_hires",
   monthlyPayrollCostUsd: "monthly_payroll_cost_usd",
+  currentTeam: "current_team",
 } as const;
 
 export type AssumptionKey = (typeof ASSUMPTION_KEYS)[keyof typeof ASSUMPTION_KEYS];
@@ -26,6 +27,15 @@ export interface PlannedHire {
   monthlyCostUsd: number;
 }
 
+/**
+ * Someone already on payroll. Kept apart from {@link PlannedHire}: planned
+ * hires are cost the forecast adds on top, while the current team is cost
+ * already being paid, so merging them would double-count payroll.
+ */
+export interface TeamMember extends PlannedHire {
+  name: string;
+}
+
 /** Shape of the onboarding wizard's founder-entered answers. */
 export interface OnboardingAnswers {
   mrrUsd: number;
@@ -33,6 +43,7 @@ export interface OnboardingAnswers {
   monthlyGrowthTargetPct: number;
   minimumRunwayMonths: number;
   plannedHires: PlannedHire[];
+  currentTeam: TeamMember[];
 }
 
 export type AssumptionSource = "onboarding" | "derived" | "founder";
@@ -136,28 +147,136 @@ export const deriveCashFromBankAccounts = async (
   return cashOnHandUsd;
 };
 
-/**
- * Derives current monthly payroll cost from synced Gusto payroll runs and
- * stores it as a `derived` assumption. Uses the most recent processed run's
- * employer cost as a proxy for "this month's payroll" - good enough for the
- * MVP; a real implementation would annualize or average across runs of
- * different cadences (weekly/biweekly/monthly).
- */
-export const deriveMonthlyPayrollCostFromGusto = async (
-  companyId: string
-): Promise<number | null> => {
+/** Trailing window of payroll runs averaged into a monthly cost. */
+const PAYROLL_WINDOW_DAYS = 90;
+const DAYS_PER_MONTH = 365.25 / 12;
+/** Standard full-time hours per month, for hourly employees with no run history. */
+const HOURS_PER_MONTH = 2080 / 12;
+
+const monthlyCostFromCompensation = (employee: {
+  annual_salary_usd: number | null;
+  hourly_rate_usd: number | null;
+}): number =>
+  employee.annual_salary_usd != null
+    ? Number(employee.annual_salary_usd) / 12
+    : Number(employee.hourly_rate_usd ?? 0) * HOURS_PER_MONTH;
+
+const sumMonthlyCost = (people: Array<{ monthlyCostUsd: number }>): number =>
+  Math.round(people.reduce((sum, person) => sum + person.monthlyCostUsd, 0));
+
+export const isTeamMember = (value: unknown): value is TeamMember =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as TeamMember).name === "string" &&
+  typeof (value as TeamMember).title === "string" &&
+  typeof (value as TeamMember).startDate === "string" &&
+  Number.isFinite((value as TeamMember).monthlyCostUsd);
+
+/** The founder's saved team, or `null` if onboarding hasn't saved one yet. */
+const getSavedTeam = async (companyId: string): Promise<TeamMember[] | null> => {
   const supabase = createServiceClient();
   const { data, error } = await supabase
-    .from("payroll_runs")
-    .select("total_employer_cost_usd, check_date")
+    .from("company_assumptions")
+    .select("value")
     .eq("company_id", companyId)
-    .order("check_date", { ascending: false })
-    .limit(1);
+    .eq("key", ASSUMPTION_KEYS.currentTeam)
+    .maybeSingle();
+
+  if (error) throw error;
+  const value: unknown = data?.value;
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const team = value.filter(isTeamMember);
+  return team.length === value.length ? team : null;
+};
+
+/**
+ * The company's current team for the onboarding Model step: the founder's
+ * saved edits if there are any, otherwise active employees as Gusto reports
+ * them.
+ */
+export const getCurrentTeam = async (
+  companyId: string
+): Promise<{ team: TeamMember[]; source: "founder" | "gusto" } | null> => {
+  const saved = await getSavedTeam(companyId);
+  if (saved) return { team: saved, source: "founder" };
+
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("payroll_employees")
+    .select("first_name, last_name, title, start_date, annual_salary_usd, hourly_rate_usd")
+    .eq("company_id", companyId)
+    .eq("employment_status", "active")
+    .order("start_date", { ascending: true, nullsFirst: false });
 
   if (error) throw error;
   if (!data || data.length === 0) return null;
 
-  const monthlyPayrollCostUsd = data[0].total_employer_cost_usd ?? 0;
+  return {
+    source: "gusto",
+    team: data.map((employee) => ({
+      name: [employee.first_name, employee.last_name].filter(Boolean).join(" "),
+      title: employee.title ?? "",
+      startDate: employee.start_date ?? "",
+      monthlyCostUsd: Math.round(monthlyCostFromCompensation(employee)),
+    })),
+  };
+};
+
+/**
+ * Derives monthly payroll cost from synced Gusto data and stores it as a
+ * `derived` assumption.
+ *
+ * A team the founder saved during onboarding wins: those are their corrections
+ * to what Gusto reports. Otherwise it averages employer cost over the trailing
+ * 90 days of processed runs rather than taking the latest run, which would
+ * under-count biweekly and weekly payrolls. With no non-zero run history -
+ * Gusto demo companies ship runs with $0 totals - it falls back to current
+ * compensation of active employees.
+ */
+export const deriveMonthlyPayrollCostFromGusto = async (
+  companyId: string
+): Promise<number | null> => {
+  const savedTeam = await getSavedTeam(companyId);
+  if (savedTeam) return sumMonthlyCost(savedTeam);
+
+  const supabase = createServiceClient();
+  const windowStart = new Date(Date.now() - PAYROLL_WINDOW_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+  const { data: runs, error: runsError } = await supabase
+    .from("payroll_runs")
+    .select("total_employer_cost_usd, check_date")
+    .eq("company_id", companyId)
+    .gte("check_date", windowStart)
+    // Gusto's demo companies auto-generate processed runs with $0 totals;
+    // treat those as no history rather than averaging zeros.
+    .gt("total_employer_cost_usd", 0);
+
+  if (runsError) throw runsError;
+
+  let monthlyPayrollCostUsd: number | null = null;
+
+  if (runs && runs.length > 0) {
+    const total = runs.reduce((sum, run) => sum + Number(run.total_employer_cost_usd), 0);
+    monthlyPayrollCostUsd = total / (PAYROLL_WINDOW_DAYS / DAYS_PER_MONTH);
+  } else {
+    const { data: employees, error: employeesError } = await supabase
+      .from("payroll_employees")
+      .select("annual_salary_usd, hourly_rate_usd")
+      .eq("company_id", companyId)
+      .eq("employment_status", "active");
+
+    if (employeesError) throw employeesError;
+    if (!employees || employees.length === 0) return null;
+
+    monthlyPayrollCostUsd = employees.reduce(
+      (sum, employee) => sum + monthlyCostFromCompensation(employee),
+      0
+    );
+  }
+
+  monthlyPayrollCostUsd = Math.round(monthlyPayrollCostUsd);
 
   await setCompanyAssumption(
     companyId,
@@ -166,6 +285,61 @@ export const deriveMonthlyPayrollCostFromGusto = async (
     "derived"
   );
   return monthlyPayrollCostUsd;
+};
+
+/** How far back a trailing-revenue window reaches for a Stripe-derived MRR proxy. */
+const REVENUE_WINDOW_DAYS = 30;
+
+/** Stripe balance-transaction `type`s that represent money actually earned. */
+const REVENUE_ENTRY_TYPES = new Set(["charge", "payment"]);
+
+/**
+ * Derives a monthly-recurring-revenue proxy from synced Stripe balance
+ * transactions and stores it as a `derived` assumption, the same way
+ * {@link deriveCashFromBankAccounts} treats Plaid/Rho and
+ * {@link deriveMonthlyPayrollCostFromGusto} treats Gusto: each connector
+ * answers one part of the onboarding model automatically, and the founder is
+ * only asked for what the data can't say.
+ *
+ * `net` (the signed effect on the Stripe balance, already Stripe's convention
+ * per lib/source/stripe/map.ts) is summed over the trailing 30 days for
+ * `charge`/`payment` entries - not `amount` (gross), so a refunded charge's
+ * matching `refund` entry nets back out rather than being missed because it
+ * carries a different `type`.
+ */
+export const deriveMrrFromStripeRevenue = async (
+  companyId: string
+): Promise<number | null> => {
+  const supabase = createServiceClient();
+  const since = new Date(Date.now() - REVENUE_WINDOW_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+  const { data, error } = await supabase
+    .from("source_entries")
+    .select("amount_minor, currency, provider_attributes")
+    .eq("company_id", companyId)
+    .eq("provider", "stripe")
+    .gte("occurred_on", since)
+    .is("withdrawn_at", null);
+
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+
+  const revenueEntries = data.filter((entry) => {
+    const type = (entry.provider_attributes as { type?: string } | null)?.type;
+    return entry.currency === "USD" && type !== undefined && REVENUE_ENTRY_TYPES.has(type);
+  });
+
+  if (revenueEntries.length === 0) return null;
+
+  const mrrUsd = revenueEntries.reduce(
+    (sum, entry) => sum + Number(entry.amount_minor) / 10 ** minorUnitExponent(entry.currency),
+    0
+  );
+
+  await setCompanyAssumption(companyId, ASSUMPTION_KEYS.mrrUsd, mrrUsd, "derived");
+  return mrrUsd;
 };
 
 /** Saves the founder-entered onboarding answers as structured assumptions. */
@@ -191,6 +365,16 @@ export const saveOnboardingAnswers = async (
       answers.minimumRunwayMonths
     ),
     setCompanyAssumption(companyId, ASSUMPTION_KEYS.plannedHires, answers.plannedHires),
+    setCompanyAssumption(companyId, ASSUMPTION_KEYS.currentTeam, answers.currentTeam),
+    ...(answers.currentTeam.length > 0
+      ? [
+          setCompanyAssumption(
+            companyId,
+            ASSUMPTION_KEYS.monthlyPayrollCostUsd,
+            sumMonthlyCost(answers.currentTeam)
+          ),
+        ]
+      : []),
   ]);
 
   const supabase = createServiceClient();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Manual test control for the Gusto connector. "Connect" starts the OAuth
@@ -10,6 +10,32 @@ import { useState } from "react";
 export const GustoConnectButton = () => {
   const [status, setStatus] = useState("");
   const [syncing, setSyncing] = useState(false);
+
+  // The OAuth callback (app/api/gusto/callback) redirects back here with
+  // ?gustoLinked=1 or ?gustoError=<message> - surface whichever landed,
+  // since a failed callback otherwise fails silently from the user's POV.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get("gustoError");
+    const syncError = params.get("gustoSyncError");
+    const linked = params.get("gustoLinked");
+    if (!error && !linked) return;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of the OAuth return params
+    setStatus(
+      error
+        ? `Connect failed: ${error}`
+        : syncError
+          ? `Connected, but the first sync failed: ${syncError}`
+          : `Connected. Synced ${params.get("gustoEmployees") ?? "0"} employees, ${params.get("gustoPayrolls") ?? "0"} payroll runs.`
+    );
+
+    const url = new URL(window.location.href);
+    ["gustoError", "gustoSyncError", "gustoLinked", "gustoEmployees", "gustoPayrolls"].forEach((key) =>
+      url.searchParams.delete(key)
+    );
+    window.history.replaceState({}, "", url.toString());
+  }, []);
 
   const sync = async () => {
     setSyncing(true);
@@ -32,7 +58,7 @@ export const GustoConnectButton = () => {
   return (
     <div className="flex flex-col items-center gap-3">
       <a
-        href="/api/gusto/authorize"
+        href="/api/gusto/authorize?returnTo=/connect"
         className="rounded-full bg-foreground px-5 py-3 text-background"
       >
         Connect Gusto
