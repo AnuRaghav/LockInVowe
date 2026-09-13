@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { minorUnitExponent } from "@/lib/source/money";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -6,7 +8,8 @@ import { createServiceClient } from "@/lib/supabase/service";
  *
  * Keys are deliberately a fixed, known set rather than free-form strings:
  * the onboarding wizard, the forecasting engine, and the agent all need to
- * agree on what "mrr" means. Add a key here before anything writes it.
+ * agree on what "mrr" means. Add a key here - and its schema in
+ * {@link ASSUMPTION_SCHEMAS} - before anything writes it.
  */
 export const ASSUMPTION_KEYS = {
   cashOnHandUsd: "cash_on_hand_usd",
@@ -17,6 +20,15 @@ export const ASSUMPTION_KEYS = {
   plannedHires: "planned_hires",
   monthlyPayrollCostUsd: "monthly_payroll_cost_usd",
   currentTeam: "current_team",
+  // Collected by the onboarding interview for the planning engine
+  // (lib/finance/planning/stored-schema.ts names the inputs these feed).
+  grossMarginPct: "gross_margin_pct",
+  monthlyRevenueChurnPct: "monthly_revenue_churn_pct",
+  collectionRatePct: "collection_rate_pct",
+  collectionLagMonths: "collection_lag_months",
+  oneTimeCosts: "one_time_costs",
+  plannedRaises: "planned_raises",
+  revenueProxyAccepted: "revenue_proxy_accepted",
 } as const;
 
 export type AssumptionKey = (typeof ASSUMPTION_KEYS)[keyof typeof ASSUMPTION_KEYS];
@@ -35,6 +47,106 @@ export interface PlannedHire {
 export interface TeamMember extends PlannedHire {
   name: string;
 }
+
+/** A known cost that happens once: a deposit, an annual contract, a tax bill. */
+export interface OneTimeCost {
+  label: string;
+  date: string;
+  amountUsd: number;
+  kind: "operating" | "capital";
+}
+
+/** A raise the founder expects to close, with the date the money arrives. */
+export interface PlannedRaise {
+  label: string;
+  expectedCloseDate: string;
+  amountUsd: number;
+  feesUsd: number;
+}
+
+/** A calendar date, `YYYY-MM-DD`, that actually exists. */
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }, "Invalid date");
+
+const usd = z.number().finite().nonnegative();
+const pct = z.number().finite().min(0).max(100);
+
+const plannedHireSchema = z.object({ title: z.string(), startDate: z.string(), monthlyCostUsd: z.number().finite() });
+
+/**
+ * What each key may hold.
+ *
+ * The original keys keep the exact rules their writers already enforced
+ * (see app/api/onboarding/route.ts), so existing values stay writable. The
+ * newer keys are strict: they are written by the interview engine's tools, and
+ * a malformed value should fail at the write, not inside a forecast.
+ */
+export const ASSUMPTION_SCHEMAS = {
+  cash_on_hand_usd: z.number().finite(),
+  mrr_usd: usd,
+  monthly_expenses_usd: usd,
+  monthly_growth_target_pct: z.number().finite().nonnegative(),
+  minimum_runway_months: z.number().finite().nonnegative(),
+  planned_hires: z.array(plannedHireSchema),
+  monthly_payroll_cost_usd: usd,
+  current_team: z.array(plannedHireSchema.extend({ name: z.string() })),
+  // Can be negative: early companies often spend more to deliver than they bill.
+  gross_margin_pct: z.number().finite().min(-900).max(100),
+  monthly_revenue_churn_pct: pct,
+  collection_rate_pct: pct,
+  collection_lag_months: z.number().int().min(0).max(120),
+  one_time_costs: z
+    .array(
+      z
+        .object({
+          label: z.string().trim().min(1).max(200),
+          date: isoDate,
+          amountUsd: usd,
+          kind: z.enum(["operating", "capital"]),
+        })
+        .strict()
+    )
+    .max(240),
+  planned_raises: z
+    .array(
+      z
+        .object({
+          label: z.string().trim().min(1).max(200),
+          expectedCloseDate: isoDate,
+          amountUsd: usd,
+          feesUsd: usd,
+        })
+        .strict()
+    )
+    .max(120),
+  revenue_proxy_accepted: z.boolean(),
+} satisfies Record<AssumptionKey, z.ZodTypeAny>;
+
+/** Thrown when a value does not fit its assumption key. */
+export class InvalidAssumptionError extends Error {
+  constructor(
+    readonly key: AssumptionKey,
+    readonly issues: z.ZodIssue[]
+  ) {
+    super(`Invalid value for assumption "${key}": ${issues.map((issue) => issue.message).join("; ")}`);
+    this.name = "InvalidAssumptionError";
+  }
+}
+
+/** Validates a value for its key, returning it as it should be stored. */
+export const parseAssumptionValue = <K extends AssumptionKey>(
+  key: K,
+  value: unknown
+): z.infer<(typeof ASSUMPTION_SCHEMAS)[K]> => {
+  const parsed = ASSUMPTION_SCHEMAS[key].safeParse(value);
+  if (!parsed.success) throw new InvalidAssumptionError(key, parsed.error.issues);
+  return parsed.data as z.infer<(typeof ASSUMPTION_SCHEMAS)[K]>;
+};
 
 /** Shape of the onboarding wizard's founder-entered answers. */
 export interface OnboardingAnswers {
@@ -66,19 +178,24 @@ export const getCompanyAssumptions = async (
   return Object.fromEntries((data ?? []).map((row) => [row.key, row.value]));
 };
 
-/** Upserts one assumption. `value` must be JSON-serializable. */
+/**
+ * Upserts one assumption.
+ *
+ * @throws {InvalidAssumptionError} when `value` does not fit `key`'s schema.
+ */
 export const setCompanyAssumption = async (
   companyId: string,
   key: AssumptionKey,
   value: unknown,
   source: AssumptionSource = "onboarding"
 ): Promise<void> => {
+  const parsed = parseAssumptionValue(key, value);
   const supabase = createServiceClient();
   const { error } = await supabase.from("company_assumptions").upsert(
     {
       company_id: companyId,
       key,
-      value: value as never,
+      value: parsed as never,
       source,
       updated_at: new Date().toISOString(),
     },
@@ -377,11 +494,13 @@ export const saveOnboardingAnswers = async (
       : []),
   ]);
 
+  // No name here: it is null until the founder gives one, and an upsert that
+  // wrote a placeholder would overwrite a real name on every save.
   const supabase = createServiceClient();
   const { error } = await supabase
     .from("companies")
     .upsert(
-      { id: companyId, name: "Development company", onboarding_completed_at: new Date().toISOString() },
+      { id: companyId, onboarding_completed_at: new Date().toISOString() },
       { onConflict: "id" }
     );
 
