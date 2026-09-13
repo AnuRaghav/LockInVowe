@@ -7,7 +7,8 @@ An AI agent that helps startup founders delegate financial and operational tasks
 - **Frontend/Backend**: Next.js 15 (App Router) + TypeScript
 - **Styling**: Tailwind CSS
 - **Database**: Supabase (PostgreSQL)
-- **LLM**: Vercel AI SDK (provider-agnostic, defaults to Anthropic Claude)
+- **LLM**: Vercel AI SDK (chat endpoint) + LangChain (`@langchain/anthropic`) for the Sam agent
+- **Voice**: ElevenLabs (optional)
 - **Deploy**: Vercel
 
 ## Quick Start
@@ -38,6 +39,38 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+### 4. Checks
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+```
+
+## The Sam Agent
+
+Sam is the CFO/ops agent, built on LangChain with Claude via `@langchain/anthropic`.
+
+```ts
+import { runSamAgent } from "@/lib/agents/sam";
+
+const { text, toolCalls } = await runSamAgent({
+  messages: "We have $600k in the bank, $20k MRR, and spend $70k a month. How long do we have?",
+});
+```
+
+**The boundary that matters**: the LLM decides *what* information or calculation
+a question needs and calls the matching tool. Deterministic code in
+`lib/finance/` does the actual math. Never put a formula, threshold, or domain
+rule in a prompt — it belongs in `lib/finance/`, with a test.
+
+To add a tool: write the calculation in `lib/finance/`, wrap it in a thin
+`tool()` adapter under `lib/agents/sam/tools/` with a `zod` schema, and register
+it in `lib/agents/sam/tools/index.ts`.
+
+Voice is optional: `speak(text)` in `lib/agents/sam/voice.ts` returns an audio
+stream when ElevenLabs credentials are set, and `null` otherwise.
+
 ## Project Structure
 
 ```
@@ -45,6 +78,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ├── app/                    # Next.js App Router pages & API routes
 │   └── api/chat/          # AI agent chat endpoint
 ├── lib/
+│   ├── agents/sam/        # Sam: the CFO/ops agent (LangChain + Claude)
+│   ├── finance/           # Deterministic financial calculations
 │   ├── supabase/          # Supabase client setup
 │   └── ai/                # LLM provider configuration
 ├── components/            # Reusable React components
@@ -54,6 +89,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Where to Build
 
+- **Sam Agent**: `lib/agents/sam/` — model config, system prompt, tool registry, public `runSamAgent()`
+- **Financial Logic**: `lib/finance/` — plain TypeScript, no LLM. Sam's tools call into here
 - **AI Agent Logic**: `lib/ai/provider.ts` (change LLM provider here), `app/api/chat/route.ts` (add tools/agents)
 - **Database Schema**: `supabase/schema.sql` (track all schema changes)
 - **UI Components**: `components/` (shared across pages)
