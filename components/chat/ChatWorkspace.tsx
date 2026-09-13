@@ -148,7 +148,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
 
   useEffect(() => {
     if (firstMessagePhase !== "conversation") return;
-    const timeout = window.setTimeout(() => setFirstMessagePhase(null), 520);
+    const timeout = window.setTimeout(() => setFirstMessagePhase(null), 1050);
     return () => window.clearTimeout(timeout);
   }, [firstMessagePhase]);
 
@@ -346,7 +346,6 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
             setRun((current) => (current ? { ...current, phase: "working" } : current));
             break;
           case "activity":
-            if (firstMessageInThread) finishFirstMessagePresence();
             steps = applyActivityEvent(steps, event.activity);
             setRun((current) => (current ? { ...current, steps } : current));
             break;

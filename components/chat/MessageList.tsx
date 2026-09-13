@@ -167,8 +167,8 @@ export function EmptyConversation({
         points={760}
         className={cn(
           "pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-square w-[min(82vw,34rem)] -translate-x-1/2 -translate-y-1/2 [mask-image:radial-gradient(circle,black_42%,transparent_78%)] motion-reduce:transition-opacity",
-          active && "sam-first-orb-active opacity-70 transition-[opacity,transform] duration-700 ease-out",
-          fadingOut && "scale-95 opacity-0 transition-[opacity,transform] duration-500 ease-out",
+          active && "sam-first-orb-active opacity-70 transition-opacity duration-700 ease-out",
+          fadingOut && "opacity-0 transition-opacity duration-1000 ease-out",
           !transitioning && "opacity-45 transition-opacity duration-500",
         )}
       />
