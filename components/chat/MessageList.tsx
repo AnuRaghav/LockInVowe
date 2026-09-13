@@ -2,11 +2,11 @@
 
 import type { ReactNode } from "react";
 
-import { ActivitySummary, ActivityTrail } from "@/components/chat/ActivityTrail";
+import { WorkPanel } from "@/components/chat/ActivityTrail";
 import { CopyButton } from "@/components/chat/CopyButton";
 import { ChartFigure } from "@/components/chat/ChartFigure";
 import { Markdown } from "@/components/chat/Markdown";
-import { currentActivity, summarizeActivity, type ActivityStep } from "@/lib/chat/activity";
+import type { ActivityStep } from "@/lib/chat/activity";
 import type { ChatChart, ChatMessage } from "@/lib/chat/client";
 import { cn } from "@/lib/utils";
 
@@ -34,21 +34,19 @@ function UserTurn({ content }: { content: string }) {
 
 function SamTurn({
   content,
-  summary,
+  work,
   pending = false,
-  footer,
   charts = [],
 }: {
   content: string;
-  summary?: string | null;
+  work?: ReactNode;
   pending?: boolean;
-  footer?: ReactNode;
   charts?: ChatChart[];
 }) {
   return (
     <div className="flex flex-col gap-2.5">
       <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-2">Sam</span>
-      {summary && <ActivitySummary text={summary} />}
+      {work}
       <div className="text-[16px] leading-[1.7] text-foreground">
         <Markdown source={content} />
         {pending && (
@@ -61,10 +59,7 @@ function SamTurn({
       {charts.map((chart) => (
         <ChartFigure key={chart.id} spec={chart.spec} />
       ))}
-      <div className="flex flex-wrap items-center gap-2">
-        <CopyButton text={content} label="Copy answer" copiedLabel="Answer copied" />
-        {footer}
-      </div>
+      {content && <CopyButton text={content} label="Copy answer" copiedLabel="Answer copied" />}
     </div>
   );
 }
@@ -76,45 +71,13 @@ export interface RunView {
   text: string;
 }
 
-/**
- * Sam can speak before it has finished working - a ReAct run may write a
- * sentence, call two more tools, then keep going. So the answer is shown as
- * soon as there is any, with finished work collapsed to one line above it and
- * anything still running noted quietly underneath. Before there is any text,
- * the work itself is the content.
- */
+/** Work stays above the answer, including when tools run between text deltas. */
 function ActiveTurn({ run }: { run: RunView }) {
-  const summary = summarizeActivity(run.steps);
-  const current = currentActivity(run.steps);
-
-  // The run is over and the database is being re-read: hold the answer
-  // steady rather than blinking it out and back in a moment later.
-  if (run.phase === "settling") {
-    return run.text ? <SamTurn content={run.text} summary={summary} /> : null;
-  }
-
-  if (!run.text) {
-    return (
-      <div className="flex flex-col gap-2.5" aria-live="polite">
-        <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-2">Sam</span>
-        <ActivityTrail steps={run.steps} starting={run.phase === "submitting"} />
-      </div>
-    );
-  }
-
   return (
     <SamTurn
       content={run.text}
-      summary={summary}
-      pending={!current}
-      footer={
-        current && (
-          <p className="flex items-center gap-2 text-[14px] text-muted" aria-live="polite">
-            <span aria-hidden className="h-1.5 w-1.5 flex-none animate-pulse rounded-full bg-accent" />
-            {current}…
-          </p>
-        )
-      }
+      pending={Boolean(run.text) && run.phase !== "settling"}
+      work={<WorkPanel steps={run.steps} active={run.phase !== "settling"} starting={run.phase === "submitting"} />}
     />
   );
 }
@@ -126,14 +89,16 @@ export interface ChatNotice {
 
 export function MessageList({
   messages,
-  summaries,
+  traces,
   run,
   notice,
+  interruptedSteps = [],
 }: {
   messages: ChatMessage[];
-  summaries: Record<string, string>;
+  traces: Record<string, ActivityStep[]>;
   run: RunView | null;
   notice: ChatNotice | null;
+  interruptedSteps?: ActivityStep[];
 }) {
   return (
     <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-8 px-5 py-10 sm:px-6">
@@ -144,12 +109,13 @@ export function MessageList({
           <SamTurn
             key={message.id}
             content={message.content}
-            summary={summaries[message.id]}
+            work={<WorkPanel steps={traces[message.id] ?? []} />}
             charts={message.charts}
           />
         ),
       )}
       {run && <ActiveTurn run={run} />}
+      {!run && interruptedSteps.length > 0 && <WorkPanel steps={interruptedSteps} />}
       {notice && (
         <p
           role={notice.tone === "error" ? "alert" : undefined}

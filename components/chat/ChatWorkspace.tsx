@@ -6,7 +6,7 @@ import { List, SidebarSimple } from "@phosphor-icons/react";
 import { Composer } from "@/components/chat/Composer";
 import { EmptyConversation, MessageList, type ChatNotice, type RunView } from "@/components/chat/MessageList";
 import { ThreadSidebar, threadLabel } from "@/components/chat/ThreadSidebar";
-import { applyActivityEvent, summarizeActivity, type ActivityStep } from "@/lib/chat/activity";
+import { applyActivityEvent, finishActivity, type ActivityStep } from "@/lib/chat/activity";
 import {
   ChatRequestError,
   createThread,
@@ -125,8 +125,9 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
 
   const [run, setRun] = useState<RunView | null>(null);
   const [notice, setNotice] = useState<ChatNotice | null>(null);
-  /** Activity summaries for answers produced in this session, by message id. */
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  /** Safe tool traces for answers produced in this session, by message id. */
+  const [traces, setTraces] = useState<Record<string, ActivityStep[]>>({});
+  const [interruptedSteps, setInterruptedSteps] = useState<ActivityStep[]>([]);
 
   const runAbort = useRef<AbortController | null>(null);
   /** The thread a live run owns; its own reconciliation reads it, not the loader. */
@@ -217,7 +218,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
   const select = (threadId: string) => {
     if (threadId === activeThreadId || run) return;
     setNotice(null);
-    setSummaries({});
+    setInterruptedSteps([]);
     stickToBottom.current = true;
     setSidebarOpen(false);
     setActiveThreadId(threadId);
@@ -230,7 +231,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
     try {
       const thread = await createThread();
       setThreads((current) => [thread, ...current]);
-      setSummaries({});
+      setInterruptedSteps([]);
       stickToBottom.current = true;
       setSidebarOpen(false);
       setActiveThreadId(thread.id);
@@ -276,7 +277,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
       await deleteThread(threadId);
       setThreads((current) => current.filter((thread) => thread.id !== threadId));
       if (threadId === activeThreadId) {
-        setSummaries({});
+        setInterruptedSteps([]);
         setNotice(null);
         setActiveThreadId(null);
       }
@@ -297,6 +298,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
     stopped.current = false;
     stickToBottom.current = true;
     setNotice(null);
+    setInterruptedSteps([]);
     setRun({ phase: "submitting", steps: [], text: "" });
     // Optimistic only until the run ends - the persisted row replaces it.
     setMessages((current) => [
@@ -333,12 +335,13 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
             setRun((current) => (current ? { ...current, steps } : current));
             break;
           case "delta":
+            if (outcome === "terminated") break;
             answer += event.text;
             setRun((current) => (current ? { ...current, text: answer } : current));
             break;
           case "run_completed":
             outcome = "completed";
-            setRun((current) => (current ? { ...current, phase: "settling" } : current));
+            setRun((current) => (current ? { ...current, phase: "settling", steps: finishActivity(steps) } : current));
             break;
           case "run_terminated":
             // A terminated run persists no answer, and the apology the route
@@ -347,7 +350,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
             outcome = "terminated";
             terminal = terminationNotice(event.outcome);
             answer = "";
-            setRun((current) => (current ? { ...current, phase: "settling", text: "" } : current));
+            setRun((current) => (current ? { ...current, phase: "settling", steps: finishActivity(steps), text: "" } : current));
             break;
         }
       }
@@ -371,7 +374,8 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
 
     if (!mounted.current) return;
 
-    const summary = summarizeActivity(steps);
+    const finishedSteps = finishActivity(steps);
+    setRun((current) => current ? { ...current, steps: finishedSteps } : current);
     if (threadId) {
       // The database, not the stream, decides what this thread now contains.
       try {
@@ -380,16 +384,18 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
         setMessages(persisted);
         const answered = [...persisted].reverse().find((message) => message.role === "assistant");
         if (outcome === "completed" && answered) {
-          if (summary) setSummaries((current) => ({ ...current, [answered.id]: summary }));
+          setTraces((current) => ({ ...current, [answered.id]: finishedSteps }));
         }
       } catch {
         if (!mounted.current) return;
         // The answer was persisted even though this read failed; keep it visible.
         if (outcome === "completed" && answer) {
+          const localId = `local-${Date.now()}`;
+          setTraces((current) => ({ ...current, [localId]: finishedSteps }));
           setMessages((current) => [
             ...current,
             {
-              id: `local-${Date.now()}`,
+              id: localId,
               threadId,
               role: "assistant",
               content: answer,
@@ -408,6 +414,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
     runAbort.current = null;
     runThread.current = null;
     setRun(null);
+    if (outcome !== "completed") setInterruptedSteps(finishedSteps);
     setNotice(terminal);
   };
 
@@ -471,7 +478,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
               Loading conversation…
             </p>
           ) : hasConversation ? (
-            <MessageList messages={messages} summaries={summaries} run={run} notice={notice} />
+            <MessageList messages={messages} traces={traces} run={run} notice={notice} interruptedSteps={interruptedSteps} />
           ) : (
             <EmptyConversation onAsk={send} disabled={messagesLoading} />
           )}

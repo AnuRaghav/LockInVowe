@@ -17,6 +17,8 @@ export interface ChatActivityEvent {
   /** Present only where a tool declared a sanitized summary. */
   summary?: string;
   critical?: boolean;
+  kind?: string;
+  durationMs?: number;
 }
 
 export type ChatStreamEvent =
@@ -67,6 +69,9 @@ const dataFrameEvent = (value: unknown): ChatStreamEvent | null => {
         label: string(frame.label),
         summary: string(frame.summary),
         critical: frame.critical === true,
+        ...(typeof frame.kind === "string" ? { kind: frame.kind } : {}),
+        ...(typeof frame.durationMs === "number" && Number.isFinite(frame.durationMs) && frame.durationMs >= 0
+          ? { durationMs: frame.durationMs } : {}),
       },
     };
   }
