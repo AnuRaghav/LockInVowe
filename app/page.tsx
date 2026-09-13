@@ -13,12 +13,12 @@ const flow = [
   {
     icon: ChartLineUp,
     title: "Model",
-    body: "Answer a handful of questions the data can't. They become assumptions Sam tracks and dates.",
+    body: "Sam builds a persistent financial memory of your business that evolves over time, keeping your model aligned with your current goals and needs.",
   },
   {
     icon: ChatCircleText,
     title: "Ask",
-    body: "Runway, hires, growth scenarios. Every answer runs through deterministic math, then gets explained.",
+    body: "Ask about runway, hiring, spending, and growth. Sam builds forecasts grounded in your business so you can make your next decision with confidence.",
   },
 ];
 
@@ -38,8 +38,10 @@ export default function Home() {
             Know your runway before you make the call.
           </h1>
           <p className="max-w-[46ch] text-lg leading-relaxed text-muted">
-            Sam is an AI CFO that reads your real financials and answers with your numbers, not
-            a guess.
+            Sam AI is an AI CFO that builds a persistent, company-specific financial memory and
+            continuously adapts as your business changes. It keeps your financial model up to
+            date so you can forecast runway, hiring, spending, and growth—and make better
+            decisions with confidence.
           </p>
           <Link
             href="/onboarding"
