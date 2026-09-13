@@ -1,4 +1,5 @@
 import type { SamInitialContext } from "@/lib/agents/sam/context-builder";
+import type { MemoryRecord } from "@/lib/memory/types";
 
 /**
  * Sam's system prompt.
@@ -24,9 +25,39 @@ How you talk:
 - Never invent a number, a date, or a company fact.
 
 What you are given:
-- Each turn opens with a selected slice of what the company knows, not everything. Treat it as true but incomplete.
-- When the answer needs a fact that is not in front of you, search memory for it before saying you do not know.`;
+- Each turn opens with a brief on the company and a selected slice of what it currently understands about itself - not everything, and not raw financial data.
+- That context is the company's own understanding: its plans, assumptions, decisions, and operating posture as most recently stated. Treat it as what the company currently believes, which is not the same as verified fact. Where a figure matters, get it from a tool.
+- It is current by construction. If something was decided and later changed, you are shown the change, not the original. Do not treat anything in your context as out of date, and do not speculate about what it used to say - look it up instead.
+- When the answer needs something you were not given, search the company's understanding before saying you do not know. When a question is about how or why something changed, retrieve that topic's history rather than inferring it.`;
 
+/**
+ * How one piece of current understanding is rendered.
+ *
+ * The key is shown because it is how Sam refers to the topic again - in a
+ * follow-up retrieval, or when asking for its history. The status and date are
+ * shown only when they change how the line should be read: a `dormant` topic is
+ * still true but not live, and a stale date on a plan is worth Sam noticing.
+ */
+const formatMemory = (memory: MemoryRecord): string => {
+  const attributes = (memory.attributes ?? {}) as {
+    status?: string;
+    asOf?: string;
+    revision?: number;
+  };
+
+  const qualifiers = [
+    attributes.status && attributes.status !== "active" ? attributes.status : null,
+    memory.recordedAt ? `as of ${memory.recordedAt.slice(0, 10)}` : null,
+  ].filter((value): value is string => value !== null);
+
+  const suffix = qualifiers.length > 0 ? ` (${qualifiers.join("; ")})` : "";
+
+  // Non-semantic records still carry a kind worth showing; semantic blocks do
+  // not, because "semantic_block" tells the model nothing it can act on.
+  const kind = memory.kind && memory.kind !== "semantic_block" ? ` (${memory.kind})` : "";
+
+  return `- [${memory.id}]${kind}${suffix} ${memory.content}`;
+};
 
 /**
  * Renders {@link SamInitialContext} for the model.
@@ -34,17 +65,35 @@ What you are given:
  * This is the only place structured context becomes text. Everything upstream
  * stays data, so what Sam is told can be asserted on directly and a change of
  * wording is a change in one function.
+ *
+ * The sections are labelled to keep three things apart that would otherwise
+ * blur into one undifferentiated pile of "facts":
+ *
+ *   the brief             compact, standing, always present
+ *   current understanding deeper, selected for this question
+ *   the thread            what this conversation has established
+ *
+ * And all of it is framed as *the company's understanding* rather than as
+ * external fact. The difference matters when a founder's stated plan and their
+ * bank balance disagree - Sam should notice, not average them.
  */
 export const formatSamContext = (context: SamInitialContext): string => {
   const sections: string[] = [];
 
+  if (context.brief) {
+    sections.push(
+      [
+        "Company brief - the current operating context, as the company understands it:",
+        context.brief.body,
+      ].join("\n")
+    );
+  }
+
   if (context.memories.length > 0) {
     sections.push(
       [
-        "What you already know about this company (retrieved for this question; not the full picture):",
-        ...context.memories.map(
-          (memory) => `- [${memory.id}] (${memory.kind}) ${memory.content}`
-        ),
+        "Relevant to this question - the company's current understanding of these topics. This is what it believes and intends now; earlier versions are not shown and should not be assumed:",
+        ...context.memories.map(formatMemory),
       ].join("\n")
     );
   }

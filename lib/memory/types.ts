@@ -109,6 +109,52 @@ export interface PersistentMemory {
 }
 
 /**
+ * One understanding a memory used to hold.
+ *
+ * Deliberately thin, and deliberately *not* the storage row: a caller learns
+ * what was believed, when, and why it changed - not that there is a revisions
+ * table, a supersession pointer, or a change-kind enum. Enough to answer "how
+ * has this changed?", and nothing a model could mistake for schema.
+ */
+export interface MemoryRevision {
+  /** Identifies this revision, so its exact wording can be fetched again. */
+  id: string;
+  /** The record this is a revision of. */
+  recordId: string;
+  /** Self-contained statement, as it was believed at the time. */
+  content: string;
+  /** Why it changed, in one line, when whoever changed it said. */
+  changeNote?: string;
+  /** When this understanding was recorded. */
+  recordedAt: string;
+  /** When it was replaced. Absent while it is still current. */
+  supersededAt?: string;
+}
+
+/**
+ * The optional half of persistent memory: knowing what it used to think.
+ *
+ * Kept off {@link PersistentMemory} because not every backend can answer it -
+ * a plain document store has no revisions to return - and a required method
+ * that half the implementations throw from is worse than an optional one a
+ * caller can ask about. Use {@link supportsMemoryHistory} to find out.
+ */
+export interface MemoryHistory {
+  /** Revisions of one record, newest first. Empty when there is only one. */
+  history(
+    scope: MemoryScope,
+    id: string,
+    options?: { limit?: number }
+  ): Promise<MemoryRevision[]>;
+}
+
+/** Whether this memory can answer "how has that changed?". */
+export const supportsMemoryHistory = (
+  memory: PersistentMemory
+): memory is PersistentMemory & MemoryHistory =>
+  typeof (memory as Partial<MemoryHistory>).history === "function";
+
+/**
  * Working state for the conversation currently in progress.
  *
  * Deliberately thin. This is scratch space for one thread - the founder's

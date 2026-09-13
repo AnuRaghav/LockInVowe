@@ -200,6 +200,7 @@ const latestRequest = (messages: BaseMessage[]): string =>
 const emptyContext = (companyId: string): SamInitialContext => ({
   companyId,
   thread: null,
+  brief: null,
   memories: [],
 });
 
