@@ -183,19 +183,39 @@ export const MAX_CREATES_PER_INTERACTION = 2;
  * transcribing, and no amount of prompt language prevents that as reliably as
  * a schema that cannot express it.
  */
-export const semanticProposalSchema = z.object({
-  assessment: z
-    .string()
-    .describe(
-      "One or two sentences: what, if anything, this interaction changed about the company's durable understanding. Say plainly when the answer is nothing."
-    ),
-  operations: z
-    .array(semanticOperationSchema)
-    .max(MAX_OPERATIONS_PER_INTERACTION)
-    .describe(
-      "The changes to make. Empty, or a single 'none', when the interaction was transient."
-    ),
-});
+export const createSemanticProposalSchema = (maxOperations = MAX_OPERATIONS_PER_INTERACTION) =>
+  z.object({
+    assessment: z
+      .string()
+      .describe(
+        "One or two sentences: what, if anything, this interaction changed about the company's durable understanding. Say plainly when the answer is nothing."
+      ),
+    operations: z
+      .array(semanticOperationSchema)
+      .max(maxOperations)
+      .describe(
+        "The changes to make. Empty, or a single 'none', when the interaction was transient."
+      ),
+  });
+
+export const semanticProposalSchema = createSemanticProposalSchema();
+
+/**
+ * The ceilings one interaction is held to.
+ *
+ * A conversation keeps the defaults. An onboarding interview section - where
+ * the founder is deliberately laying out several topics at once - is the one
+ * caller that raises them, and says so explicitly.
+ */
+export interface SemanticUpdateLimits {
+  maxOperations: number;
+  maxCreates: number;
+}
+
+export const DEFAULT_SEMANTIC_UPDATE_LIMITS: SemanticUpdateLimits = {
+  maxOperations: MAX_OPERATIONS_PER_INTERACTION,
+  maxCreates: MAX_CREATES_PER_INTERACTION,
+};
 
 export type SemanticProposal = z.infer<typeof semanticProposalSchema>;
 

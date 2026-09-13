@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { MemoryScope, PersistentMemory } from "@/lib/memory/types";
 import type { FinancialSession } from "@/lib/finance/session";
 import { createFinancialSession, FinancialDataUnavailable } from "@/lib/finance/session";
+import { isOnboardingCapability, type OnboardingCapability } from "@/lib/onboarding/capability";
 
 const isPersistentMemory = (value: unknown): value is PersistentMemory =>
   typeof (value as PersistentMemory | undefined)?.search === "function" &&
@@ -51,6 +52,10 @@ export const samRuntimeContextSchema = z.object({
     .describe(
       "Long-lived company knowledge the retrieval tools read. Defaults to the application's memory module."
     ),
+  onboarding: z
+    .custom<OnboardingCapability>(isOnboardingCapability)
+    .optional()
+    .describe("Trusted onboarding-session capability. Present only for onboarding runs; never supplied by the model."),
   financials: z.custom<FinancialSession>((value) =>
     typeof value?.companyId === "string" && typeof value?.read === "function"
   ).optional().describe("Trusted run-local Numerical Model capability; never supplied by the model."),

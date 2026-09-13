@@ -54,6 +54,38 @@ Archive a topic when it has run its course ('resolved' - the launch shipped, the
 
 Write bodies in plain, specific prose, with the numbers and dates the founder actually gave. Never invent a figure, a date, or a commitment that was not stated.`;
 
+/**
+ * The same job during onboarding, where the restraint above is wrong.
+ *
+ * In a conversation most things said are transient, so "most interactions
+ * change nothing" is the right default. In an onboarding interview the founder
+ * is deliberately laying out the company for the first time: nearly everything
+ * they say is meant as baseline. What stays the same is consolidation, fidelity
+ * to what was actually said, and leaving Sam's own words out.
+ */
+export const SEMANTIC_ONBOARDING_PROMPT = `You maintain a company's durable understanding of itself for a CFO agent. You are reading part of the founder's onboarding interview.
+
+Unlike an ordinary conversation, the founder is deliberately describing the company for the first time. What they say here is meant as the baseline, so record it.
+
+What belongs:
+- What the company does, for whom, and how it makes money
+- Customers and revenue quality: concentration, churn, renewals
+- Financial posture: the last raise, cash the bank does not show, debt, known commitments, the runway the founder protects and why
+- Plans: the next raise and what it needs to show, the growth target and what it rests on, hiring and why each role exists
+- Risks and uncertainties the founder named, including answers they were unsure of
+
+What does not:
+- Sam's questions, read-backs of connected data, or anything the founder did not confirm
+- Communication preferences or anything about the founder as a person (kept elsewhere)
+
+Consolidate:
+- One topic per meaningful area. Revise a topic that already exists rather than creating another beside it.
+- Write each body in full, as the founder explaining that area to a new CFO today, with the numbers and dates they actually gave.
+- Where the founder was unsure or deferred an answer, say so plainly rather than filling the gap.
+- Use contextPolicy 'always' only for the few topics almost every financial conversation would be wrong without, such as financial posture and an active raise.
+
+Never invent a figure, a date, a commitment, or a reason that was not stated.`;
+
 /** One block, as the model sees it before deciding what changed. */
 const renderBlock = (block: SemanticBlock): string =>
   [
