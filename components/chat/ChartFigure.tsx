@@ -29,16 +29,7 @@ const INK = { muted: "rgba(244, 245, 242, 0.68)", faint: "rgba(244, 245, 242, 0.
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 const exact = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
-export function ChartFigure({
-  spec,
-  heightClassName = "h-64",
-  centered = false,
-}: {
-  spec: ChartSpec;
-  heightClassName?: string;
-  /** Centers the caption and legend - the dashboard's cards read better centered than left-aligned like chat's do. */
-  centered?: boolean;
-}) {
+export function ChartFigure({ spec }: { spec: ChartSpec }) {
   const rows = toChartRows(spec);
   const multiSeries = spec.series.length > 1;
   const withUnit = (value: number) => (spec.yLabel ? `${exact.format(value)} ${spec.yLabel}` : exact.format(value));
@@ -71,7 +62,7 @@ export function ChartFigure({
       {multiSeries && (
         <Legend
           verticalAlign="top"
-          align={centered ? "center" : "left"}
+          align="left"
           height={32}
           iconType="circle"
           iconSize={8}
@@ -85,11 +76,11 @@ export function ChartFigure({
 
   return (
     <figure className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
-      <figcaption className={centered ? "flex flex-col items-center gap-0.5 text-center" : "flex flex-col gap-0.5"}>
+      <figcaption className="flex flex-col gap-0.5">
         <span className="text-[14px] font-medium text-foreground">{spec.title}</span>
         {spec.yLabel && <span className="text-[12.5px] text-muted-2">{spec.yLabel}</span>}
       </figcaption>
-      <div className={heightClassName + " w-full"}>
+      <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
           {spec.type === "bar" ? (
             <BarChart data={rows} margin={margin} barGap={2}>
