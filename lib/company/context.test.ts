@@ -24,18 +24,19 @@ describe("resolveCompanyContext", () => {
     );
   });
 
-  it("resolves to the authenticated founder's user id", async () => {
+  it("resolves company and founder to the authenticated user's id", async () => {
     getUser.mockResolvedValue({ data: { user: { id: "user_123" } } });
 
     await expect(resolveCompanyContext(request())).resolves.toEqual({
       companyId: "user_123",
+      founderId: "user_123",
     });
   });
 
   it("honours the dev-only override header outside production, without touching auth", async () => {
     await expect(
       resolveCompanyContext(request({ "x-dev-company-id": "company_header" }))
-    ).resolves.toEqual({ companyId: "company_header" });
+    ).resolves.toEqual({ companyId: "company_header", founderId: "company_header" });
 
     expect(getUser).not.toHaveBeenCalled();
   });
@@ -45,6 +46,7 @@ describe("resolveCompanyContext", () => {
 
     await expect(resolveAuthenticatedCompanyContext()).resolves.toEqual({
       companyId: "authenticated-company",
+      founderId: "authenticated-company",
     });
   });
 });
