@@ -3,6 +3,7 @@ import { createDataStreamResponse, type JSONValue } from "ai";
 
 import { streamSamAgent, type SamRunEvent, type SamRunOutcome } from "@/lib/agents/sam";
 import { resolveCompanyContext, UnauthenticatedError } from "@/lib/company/context";
+import { updateSemanticMemoryAfterCompletedTurn } from "@/lib/conversations/semantic-updates";
 import { ConversationError, createConversationStore, threadNameFromMessage, type Message, type Run } from "@/lib/conversations/store";
 
 export const runtime = "nodejs";
@@ -105,8 +106,15 @@ export async function POST(req: Request) {
           })) {
             if (event.type === "message_delta") writer.write(`0:${JSON.stringify(event.text)}\n` as `0:${string}\n`);
             if (event.type === "run_completed") {
+              const messagesForSemanticUpdate = [...conversation.messages];
               await store.finish(company.companyId, activeRun.id, "completed", event.text);
               finalized = true;
+              await updateSemanticMemoryAfterCompletedTurn({
+                companyId: company.companyId,
+                messages: messagesForSemanticUpdate,
+                assistantText: event.text,
+                run: activeRun,
+              });
             } else if (event.type === "run_terminated") {
               await store.finish(company.companyId, activeRun.id, event.outcome === "cancelled" ? "cancelled" : "failed");
               finalized = true;
