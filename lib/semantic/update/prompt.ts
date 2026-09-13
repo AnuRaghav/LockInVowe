@@ -35,7 +35,8 @@ What belongs in durable state:
 
 What does not:
 - Questions the founder asked, and answers they were given
-- Figures that can be read from the company's financial data
+- Sam's own inferred conclusions, unless the founder explicitly adopts or corrects them
+- Authoritative financial actuals: cash balances, payroll actuals, transactions, or derived source-system figures. A founder's statement about a number can be retained only as a management claim, not as deterministic financial truth
 - Thinking out loud, options weighed and dropped, hypotheticals
 - Anything true only for the duration of this conversation
 

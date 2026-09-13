@@ -8,7 +8,10 @@ const state = vi.hoisted(() => ({
   nextRun: 1,
   outcome: "completed" as "completed" | "failed" | "cancelled",
   authenticated: true,
+  semanticResult: { status: "unchanged", interactionId: "semantic-1", consideredKeys: [], applied: [], rejected: [] } as Record<string, unknown> | null,
 }));
+
+const semanticUpdate = vi.hoisted(() => vi.fn(async () => state.semanticResult));
 
 const stream = vi.hoisted(() => vi.fn(async function* (input: { messages: Array<{ text: string; getType(): string }>; runId: string; context: Record<string, unknown> }) {
   const reply = input.messages.length === 1 ? "First answer" : `I remember: ${input.messages[1].text}`;
@@ -22,6 +25,7 @@ const stream = vi.hoisted(() => vi.fn(async function* (input: { messages: Array<
 }));
 
 vi.mock("@/lib/agents/sam", () => ({ streamSamAgent: stream }));
+vi.mock("@/lib/conversations/semantic-updates", () => ({ updateSemanticMemoryAfterCompletedTurn: semanticUpdate }));
 vi.mock("@/lib/company/context", () => {
   class UnauthenticatedError extends Error {}
   return {
@@ -92,7 +96,9 @@ beforeEach(() => {
   state.threads.clear(); state.nextThread = 1; state.nextMessage = 1; state.nextRun = 1;
   state.outcome = "completed";
   state.authenticated = true;
+  state.semanticResult = { status: "unchanged", interactionId: "semantic-1", consideredKeys: [], applied: [], rejected: [] };
   stream.mockClear();
+  semanticUpdate.mockClear();
 });
 
 describe("durable Sam conversations", () => {
@@ -144,6 +150,40 @@ describe("durable Sam conversations", () => {
     expect(conversation.messages.every(({ createdAt }: { createdAt: string }) => Boolean(createdAt))).toBe(true);
   });
 
+  it("considers a completed turn for semantic memory after the assistant answer is persisted", async () => {
+    const first = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ content: "Should we hire?" }) }));
+    const threadId = first.headers.get("x-thread-id")!;
+
+    await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ threadId, content: "Yes, freeze hiring until the raise closes." }) }));
+
+    expect(semanticUpdate).toHaveBeenCalledTimes(2);
+    const secondSemanticCall = (semanticUpdate.mock.calls as unknown as Array<[{
+      messages: Array<{ role: string; content: string }>;
+    }]>)[1]![0];
+    expect(secondSemanticCall).toMatchObject({
+      companyId: "trusted-company",
+      assistantText: "I remember: First answer",
+      run: { id: "run-2", threadId },
+    });
+    expect(secondSemanticCall.messages.map(({ role, content }) => [role, content])).toEqual([
+      ["user", "Should we hire?"],
+      ["assistant", "First answer"],
+      ["user", "Yes, freeze hiring until the raise closes."],
+    ]);
+    expect(state.threads.get(threadId)?.messages.at(-1)).toMatchObject({ role: "assistant", content: "I remember: First answer" });
+  });
+
+  it("does not let a failed semantic update outcome fail the completed chat turn", async () => {
+    state.semanticResult = { status: "failed", interactionId: "semantic-1", consideredKeys: [], applied: [], rejected: [], error: "semantic store unavailable" };
+
+    const response = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ content: "We decided to pause hiring." }) }));
+    const threadId = response.headers.get("x-thread-id")!;
+
+    expect(response.status).toBe(200);
+    expect(state.threads.get(threadId)?.runs[0].status).toBe("completed");
+    expect(state.threads.get(threadId)?.messages.map(({ role }) => role)).toEqual(["user", "assistant"]);
+  });
+
   it.each(["failed", "cancelled"] as const)("preserves the user message but not a partial answer when a run is %s", async (outcome) => {
     state.outcome = outcome;
     const response = await POST(new Request("http://localhost/api/chat", {
@@ -162,6 +202,7 @@ describe("durable Sam conversations", () => {
     ]);
     expect(state.threads.get(threadId)?.runs[0].status).toBe(outcome);
     expect(JSON.stringify(conversation)).not.toContain("unfinished partial answer");
+    expect(semanticUpdate).not.toHaveBeenCalled();
   });
 
   it("ignores browser-supplied history and trusted-looking system/tool content", async () => {
