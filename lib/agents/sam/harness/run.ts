@@ -67,7 +67,7 @@ export const buildSamMiddleware = ({
   const calculationTools = namesOfKind(toolPolicies, "calculation");
 
   const middleware: AnyAgentMiddleware[] = [
-    createSamNoProgressMiddleware({ policy, recorder }),
+    createSamNoProgressMiddleware({ policy, recorder, toolPolicies }),
 
     modelCallLimitMiddleware({
       runLimit: policy.maxModelCalls,

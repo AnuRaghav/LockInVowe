@@ -599,10 +599,12 @@ describe("Sam execution harness", () => {
         observer: { record: (event) => events.push(event.type) },
       });
 
-      expect(events[0]).toBe("run_start");
-      expect(events).toContain("model_call");
-      expect(events).toContain("tool_call");
-      expect(events[events.length - 1]).toBe("run_end");
+      expect(events[0]).toBe("run_started");
+      expect(events).toContain("model_started");
+      expect(events).toContain("model_completed");
+      expect(events).toContain("tool_started");
+      expect(events).toContain("tool_completed");
+      expect(events[events.length - 1]).toBe("run_completed");
       expect(result.run.outcome).toBe("completed");
     });
 

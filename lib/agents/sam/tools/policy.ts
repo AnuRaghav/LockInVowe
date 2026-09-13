@@ -40,6 +40,21 @@ export interface SamToolPolicy {
   maxCallsPerRun?: number;
   /** Stricter timeout than the run-wide tool timeout. */
   timeoutMs?: number;
+  /**
+   * How a UI should describe this call while it is running - "Calculating
+   * runway". Static text declared next to the tool, never derived from the
+   * model's arguments, so narrating a run cannot leak what was asked.
+   */
+  label?: string;
+  /**
+   * Optional, explicitly safe one-line summary of a successful result.
+   *
+   * Opt-in per tool, and the only route by which anything derived from a tool's
+   * output reaches an event stream. A tool that declares nothing here streams
+   * nothing but its name, status, and timing. Keep summaries qualitative -
+   * a status word, a count - never the company's figures.
+   */
+  summarize?: (data: unknown) => string | undefined;
 }
 
 /**
@@ -54,23 +69,43 @@ export const DEFAULT_SAM_TOOL_POLICY: SamToolPolicy = {
   requiresApproval: false,
 };
 
-const READ_ONLY: SamToolPolicy = {
-  kind: "read_only",
-  retryable: true,
-  requiresApproval: false,
-};
-
-const CALCULATION: SamToolPolicy = {
-  kind: "calculation",
-  retryable: true,
-  requiresApproval: false,
-};
+const field = (data: unknown, key: string): unknown =>
+  typeof data === "object" && data !== null
+    ? (data as Record<string, unknown>)[key]
+    : undefined;
 
 /** Policy for every tool in {@link SAM_TOOLS}, keyed by tool name. */
 export const SAM_TOOL_POLICIES: Readonly<Record<string, SamToolPolicy>> = {
-  calculate_runway: CALCULATION,
-  search_memory: READ_ONLY,
-  get_memory: READ_ONLY,
+  calculate_runway: {
+    kind: "calculation",
+    retryable: true,
+    requiresApproval: false,
+    label: "Calculating runway",
+    // The qualitative verdict only. No cash balance, no burn, no dates.
+    summarize: (data) => {
+      const status = field(data, "status");
+      return typeof status === "string" ? `status: ${status}` : undefined;
+    },
+  },
+  search_memory: {
+    kind: "read_only",
+    retryable: true,
+    requiresApproval: false,
+    label: "Searching company memory",
+    // How much was found, never what.
+    summarize: (data) => {
+      const memories = field(data, "memories");
+      return Array.isArray(memories)
+        ? `${memories.length} ${memories.length === 1 ? "memory" : "memories"} matched`
+        : undefined;
+    },
+  },
+  get_memory: {
+    kind: "read_only",
+    retryable: true,
+    requiresApproval: false,
+    label: "Reading a company note",
+  },
 };
 
 export type SamToolPolicyRegistry = Readonly<Record<string, SamToolPolicy>>;
@@ -80,6 +115,12 @@ export const samToolPolicy = (
   name: string,
   registry: SamToolPolicyRegistry = SAM_TOOL_POLICIES
 ): SamToolPolicy => registry[name] ?? DEFAULT_SAM_TOOL_POLICY;
+
+/** How a UI narrates this tool while it runs. */
+export const samToolLabel = (
+  name: string,
+  registry: SamToolPolicyRegistry = SAM_TOOL_POLICIES
+): string => registry[name]?.label ?? name.replace(/_/g, " ");
 
 /** Names the harness is allowed to retry. Everything else is left alone. */
 export const retryableToolNames = (

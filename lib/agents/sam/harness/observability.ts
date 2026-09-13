@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import type { SamToolKind } from "@/lib/agents/sam/tools/policy";
+import type {
+  SamRunEvent,
+  SamRunObserver,
+  SamRunTrigger,
+} from "@/lib/agents/sam/harness/events";
 import {
   errorMessage,
   type SamFailureStage,
   type SamRunFailure,
   type SamRunOutcome,
 } from "@/lib/agents/sam/harness/outcome";
+import type { SamToolKind } from "@/lib/agents/sam/tools/policy";
 
 /**
  * What one Sam run recorded about itself.
@@ -19,6 +24,11 @@ import {
  * 2. It is plain data behind {@link SamRunObserver}. Sam knows nothing about
  *    LangSmith, OpenTelemetry, or a database; pointing the record at one is a
  *    new observer and no change here.
+ *
+ * The recorder is also what makes a run *observable while it happens*: every
+ * method both accumulates the record and emits an event from the contract in
+ * `events.ts`, so live streaming and after-the-fact metadata are one mechanism
+ * rather than two that can disagree.
  */
 
 export interface SamTokenUsage {
@@ -38,6 +48,8 @@ export interface SamModelCallRecord {
 
 export interface SamToolCallRecord {
   index: number;
+  /** The model's id for this call, for correlating with the event stream. */
+  callId: string;
   name: string;
   kind: SamToolKind;
   durationMs: number;
@@ -47,6 +59,8 @@ export interface SamToolCallRecord {
   resultChars: number;
   /** True when the result was refused for exceeding the policy's size cap. */
   truncated: boolean;
+  /** Sanitized summary, only for tools that declared one. */
+  summary?: string;
 }
 
 export interface SamContextBudget {
@@ -68,6 +82,7 @@ export interface SamRunRecord {
   companyId: string;
   threadId?: string;
   model: string;
+  trigger: SamRunTrigger;
   startedAt: string;
   endedAt?: string;
   durationMs?: number;
@@ -83,23 +98,6 @@ export interface SamRunRecord {
   outcome?: SamRunOutcome;
   /** The run finished, but a non-critical dependency failed along the way. */
   degraded: boolean;
-}
-
-export type SamRunEvent =
-  | { type: "run_start"; record: SamRunRecord }
-  | { type: "model_call"; runId: string; call: SamModelCallRecord }
-  | { type: "tool_call"; runId: string; call: SamToolCallRecord }
-  | { type: "failure"; runId: string; failure: SamRunFailure }
-  | { type: "run_end"; record: SamRunRecord };
-
-/**
- * The one seam between Sam and whatever watches it.
- *
- * Keep it this narrow. A tracer, a metrics sink, and a test spy are all the
- * same three lines; none of them can reach back into the run.
- */
-export interface SamRunObserver {
-  record(event: SamRunEvent): void;
 }
 
 export const NOOP_OBSERVER: SamRunObserver = { record: () => {} };
@@ -119,30 +117,34 @@ export const createStructuredLogger = (
   write: (line: string) => void = (line) => console.info(line)
 ): SamRunObserver => ({
   record(event) {
-    if (event.type === "run_start" || event.type === "run_end") {
-      const { record } = event;
+    if (event.type === "run_completed" || event.type === "run_terminated") {
+      const { run } = event;
       write(
         JSON.stringify({
           event: event.type,
-          runId: record.runId,
-          companyId: record.companyId,
-          threadId: record.threadId,
-          model: record.model,
-          durationMs: record.durationMs,
-          modelCalls: record.modelCallCount,
-          toolCalls: record.toolCallCount,
-          toolNames: record.toolNames,
-          usage: record.usage,
-          failures: record.failures.length,
-          contextChars: record.contextBudget?.systemPromptChars,
-          outcome: record.outcome,
-          degraded: record.degraded,
+          runId: run.runId,
+          companyId: run.companyId,
+          threadId: run.threadId,
+          model: run.model,
+          durationMs: run.durationMs,
+          modelCalls: run.modelCallCount,
+          toolCalls: run.toolCallCount,
+          toolNames: run.toolNames,
+          usage: run.usage,
+          failures: run.failures.length,
+          contextChars: run.contextBudget?.systemPromptChars,
+          outcome: run.outcome,
+          degraded: run.degraded,
         })
       );
       return;
     }
 
-    write(JSON.stringify({ event: event.type, ...event }));
+    // Message deltas are the founder's answer arriving a piece at a time;
+    // logging them would duplicate the reply into the log stream.
+    if (event.type === "message_delta") return;
+
+    write(JSON.stringify(event));
   },
 });
 
@@ -165,11 +167,17 @@ export interface CreateRunRecorderOptions {
   model: string;
   runId?: string;
   requestId?: string;
+  trigger?: SamRunTrigger;
   observer?: SamRunObserver;
 }
 
+type EventPayload<T extends SamRunEvent["type"]> = Omit<
+  Extract<SamRunEvent, { type: T }>,
+  "runId" | "seq" | "at" | "type"
+>;
+
 /**
- * Accumulates a {@link SamRunRecord} and forwards each event as it happens.
+ * Accumulates a {@link SamRunRecord} and emits the run's events as they happen.
  *
  * One instance per run, created by the harness and handed to the middleware, so
  * nothing is shared between concurrent runs.
@@ -179,6 +187,7 @@ export class SamRunRecorder {
 
   private readonly observer: SamRunObserver;
   private readonly startedAtMs = Date.now();
+  private seq = 0;
 
   constructor({
     companyId,
@@ -186,6 +195,7 @@ export class SamRunRecorder {
     model,
     runId = createSamRunId(),
     requestId,
+    trigger = "user",
     observer = NOOP_OBSERVER,
   }: CreateRunRecorderOptions) {
     this.observer = observer;
@@ -195,6 +205,7 @@ export class SamRunRecorder {
       companyId,
       threadId,
       model,
+      trigger,
       startedAt: new Date(this.startedAtMs).toISOString(),
       modelCallCount: 0,
       toolCallCount: 0,
@@ -215,31 +226,84 @@ export class SamRunRecorder {
     return this.record.requestId;
   }
 
-  start(): void {
-    this.observer.record({ type: "run_start", record: this.record });
-  }
-
-  nextModelCallIndex(): number {
-    return this.record.modelCalls.length;
-  }
-
-  modelCall(call: Omit<SamModelCallRecord, "index">): void {
-    const entry: SamModelCallRecord = {
-      index: this.record.modelCalls.length,
-      ...call,
-    };
-    this.record.modelCalls.push(entry);
-    if (entry.ok) this.record.modelCallCount += 1;
-    if (entry.usage) {
-      this.record.usage.inputTokens += entry.usage.inputTokens;
-      this.record.usage.outputTokens += entry.usage.outputTokens;
-      this.record.usage.totalTokens += entry.usage.totalTokens;
-    }
+  /** Stamps identity and ordering onto an event, then hands it to the observer. */
+  emit<T extends SamRunEvent["type"]>(type: T, payload: EventPayload<T>): void {
     this.observer.record({
-      type: "model_call",
-      runId: this.runId,
-      call: entry,
+      type,
+      runId: this.record.runId,
+      seq: this.seq++,
+      at: new Date().toISOString(),
+      ...payload,
+      // The `type` and its payload are correlated by EventPayload<T> at every
+      // call site; TypeScript cannot see that through the generic.
+    } as unknown as SamRunEvent);
+  }
+
+  start(): void {
+    this.emit("run_started", {
+      requestId: this.record.requestId,
+      companyId: this.record.companyId,
+      threadId: this.record.threadId,
+      model: this.record.model,
+      trigger: this.record.trigger,
     });
+  }
+
+  contextBuilt(budget: SamContextBudget): void {
+    this.record.contextBudget = budget;
+    this.emit("context_built", {
+      memoryCount: budget.memoryCount,
+      threadNoteCount: budget.threadNoteCount,
+      budget,
+    });
+  }
+
+  /** Reserves the index for an attempt about to be made. */
+  modelStarted(): number {
+    const index = this.record.modelCalls.length;
+    this.emit("model_started", { index });
+    return index;
+  }
+
+  modelCall(call: Omit<SamModelCallRecord, "index">, index: number): void {
+    const entry: SamModelCallRecord = { index, ...call };
+    this.record.modelCalls.push(entry);
+
+    if (entry.ok) {
+      this.record.modelCallCount += 1;
+      if (entry.usage) {
+        this.record.usage.inputTokens += entry.usage.inputTokens;
+        this.record.usage.outputTokens += entry.usage.outputTokens;
+        this.record.usage.totalTokens += entry.usage.totalTokens;
+      }
+      this.emit("model_completed", {
+        index,
+        durationMs: entry.durationMs,
+        usage: entry.usage,
+      });
+      return;
+    }
+
+    const failure = this.record.failures[this.record.failures.length - 1];
+    this.emit("model_failed", {
+      index,
+      durationMs: entry.durationMs,
+      error: entry.error ?? "Model call failed.",
+      retryable: failure?.stage === "model" ? failure.retryable : false,
+    });
+  }
+
+  toolStarted(tool: { callId: string; name: string; kind: SamToolKind; label: string }): void {
+    this.emit("tool_started", tool);
+  }
+
+  awaitingApproval(tool: {
+    callId: string;
+    name: string;
+    kind: SamToolKind;
+    label: string;
+  }): void {
+    this.emit("tool_awaiting_approval", tool);
   }
 
   toolCall(call: Omit<SamToolCallRecord, "index">): void {
@@ -250,12 +314,64 @@ export class SamRunRecorder {
     this.record.toolCalls.push(entry);
     this.record.toolCallCount += 1;
     this.record.toolNames.push(entry.name);
-    this.observer.record({ type: "tool_call", runId: this.runId, call: entry });
+
+    const shared = {
+      callId: entry.callId,
+      name: entry.name,
+      kind: entry.kind,
+      durationMs: entry.durationMs,
+    };
+
+    if (entry.ok) {
+      this.emit("tool_completed", {
+        ...shared,
+        resultChars: entry.resultChars,
+        truncated: entry.truncated,
+        summary: entry.summary,
+      });
+      return;
+    }
+
+    const failure = this.record.failures[this.record.failures.length - 1];
+    this.emit("tool_failed", {
+      ...shared,
+      error: entry.error ?? "Tool call failed.",
+      retryable: failure?.name === entry.name ? failure.retryable : false,
+      critical: failure?.name === entry.name ? failure.critical : true,
+    });
   }
 
+  repeatBlocked(tool: {
+    callId: string;
+    name: string;
+    kind: SamToolKind;
+    attempt: number;
+  }): void {
+    this.failure({
+      stage: "tool",
+      name: tool.name,
+      message: `Blocked repeat #${tool.attempt} of an identical call.`,
+      critical: false,
+      retryable: false,
+    });
+    this.emit("tool_repeat_blocked", tool);
+  }
+
+  contextFailed(error: unknown, retryable: boolean): void {
+    const message = summariseError(error);
+    this.failure({ stage: "context", message, critical: false, retryable });
+    this.emit("context_failed", { error: message, retryable });
+  }
+
+  /**
+   * Records a failure without emitting.
+   *
+   * The event for a model or tool failure is emitted by the call that failed,
+   * so it carries that call's timing; this keeps the record complete without
+   * duplicating the event.
+   */
   failure(failure: SamRunFailure): void {
     this.record.failures.push(failure);
-    this.observer.record({ type: "failure", runId: this.runId, failure });
   }
 
   /** Stage of the most recent failure, used to classify the run's outcome. */
@@ -263,19 +379,30 @@ export class SamRunRecorder {
     return this.record.failures[this.record.failures.length - 1]?.stage;
   }
 
-  contextBudget(budget: SamContextBudget): void {
-    this.record.contextBudget = budget;
-  }
-
-  finish(outcome: SamRunOutcome): SamRunRecord {
+  finish(outcome: SamRunOutcome, detail: { text?: string; error?: string } = {}): SamRunRecord {
     const endedAtMs = Date.now();
     this.record.outcome = outcome;
+    this.record.endedAt = new Date(endedAtMs).toISOString();
+    this.record.durationMs = endedAtMs - this.startedAtMs;
     // A run that reached an answer despite a failure along the way is not the
     // same as a clean one, and callers deserve to be able to tell.
     this.record.degraded = outcome === "completed" && this.record.failures.length > 0;
-    this.record.endedAt = new Date(endedAtMs).toISOString();
-    this.record.durationMs = endedAtMs - this.startedAtMs;
-    this.observer.record({ type: "run_end", record: this.record });
+
+    if (outcome === "completed") {
+      this.emit("run_completed", {
+        outcome,
+        text: detail.text ?? "",
+        degraded: this.record.degraded,
+        run: this.record,
+      });
+    } else {
+      this.emit("run_terminated", {
+        outcome,
+        error: detail.error ?? "The run did not complete.",
+        run: this.record,
+      });
+    }
+
     return this.record;
   }
 }

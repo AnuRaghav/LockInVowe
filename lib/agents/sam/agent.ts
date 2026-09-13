@@ -13,12 +13,15 @@ import {
   type SamInitialContext,
 } from "@/lib/agents/sam/context-builder";
 import { measureSamContext } from "@/lib/agents/sam/harness/context-budget";
+import type {
+  SamRunObserver,
+  SamRunTrigger,
+} from "@/lib/agents/sam/harness/events";
 import type { SamToolApprover } from "@/lib/agents/sam/harness/middleware";
 import {
   SamRunRecorder,
   defaultSamRunObserver,
   summariseError,
-  type SamRunObserver,
   type SamRunRecord,
 } from "@/lib/agents/sam/harness/observability";
 import {
@@ -140,6 +143,8 @@ export interface SamRunInput extends CreateSamAgentOptions {
   runId?: string;
   /** Identity of the originating request, when the caller already has one. */
   requestId?: string;
+  /** What set this run going. Defaults to a founder asking. */
+  trigger?: SamRunTrigger;
   /** Where execution metadata goes. Defaults to a structured logger. */
   observer?: SamRunObserver;
 }
@@ -206,8 +211,14 @@ const emptyContext = (companyId: string): SamInitialContext => ({
  * be reached, the run opens with nothing selected and is marked degraded rather
  * than failing outright. Sam can still call the retrieval tools mid-loop, and
  * the founder is better served by a narrower answer than by an error.
+ *
+ * @internal Shared by `runSamAgent` and `streamSamAgent`.
  */
-const prepareRun = async (input: SamRunInput) => {
+export const prepareSamRun = async (
+  input: SamRunInput,
+  /** Extra cancellation, e.g. a stream consumer that walked away. */
+  extraSignal?: AbortSignal
+) => {
   const runtime = samRuntimeContextSchema.parse(input.context);
   const policy = resolveSamExecutionPolicy(input.policy, input.toolPolicies);
   const history = toMessages(input.messages);
@@ -218,6 +229,7 @@ const prepareRun = async (input: SamRunInput) => {
     model: input.model?.model ?? process.env.SAM_MODEL ?? DEFAULT_SAM_MODEL,
     runId: input.runId ?? runtime.runId,
     requestId: input.requestId ?? runtime.requestId,
+    trigger: input.trigger,
     observer: input.observer ?? defaultSamRunObserver(),
   });
   recorder.start();
@@ -230,16 +242,11 @@ const prepareRun = async (input: SamRunInput) => {
       request: latestRequest(history),
     });
   } catch (error) {
-    recorder.failure({
-      stage: "context",
-      message: summariseError(error),
-      critical: false,
-      retryable: isRetryableError(error),
-    });
+    recorder.contextFailed(error, isRetryableError(error));
   }
 
   const systemPrompt = input.systemPrompt ?? buildSamSystemPrompt(initialContext);
-  recorder.contextBudget(
+  recorder.contextBuilt(
     measureSamContext({
       systemPrompt,
       initialContext,
@@ -256,9 +263,17 @@ const prepareRun = async (input: SamRunInput) => {
     requestId: recorder.requestId,
   };
 
+  // Cancellation the *caller* asked for, kept apart from the deadline so a
+  // stopped run can be told from one that ran out of time.
+  const cancellation = [input.signal, extraSignal].filter(
+    (signal): signal is AbortSignal => signal !== undefined
+  );
+  const callerSignal =
+    cancellation.length > 0 ? AbortSignal.any(cancellation) : undefined;
+
   const deadline = AbortSignal.timeout(policy.runDeadlineMs);
-  const signal = input.signal
-    ? AbortSignal.any([input.signal, deadline])
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, deadline])
     : deadline;
 
   return {
@@ -270,6 +285,7 @@ const prepareRun = async (input: SamRunInput) => {
     policy,
     recorder,
     deadline,
+    callerSignal,
     signal,
     invokeConfig: {
       context: invokeContext,
@@ -279,19 +295,136 @@ const prepareRun = async (input: SamRunInput) => {
   };
 };
 
-type PreparedRun = Awaited<ReturnType<typeof prepareRun>>;
+export type PreparedSamRun = Awaited<ReturnType<typeof prepareSamRun>>;
 
-const failedResult = (
-  prepared: PreparedRun,
+/** @internal Builds the agent for a prepared run. */
+export const buildSamAgent = (
   input: SamRunInput,
+  prepared: PreparedSamRun,
+  structured = false
+) => {
+  const params = agentParams({
+    ...input,
+    systemPrompt: prepared.systemPrompt,
+    recorder: prepared.recorder,
+    resolvedPolicy: prepared.policy,
+  });
+
+  return structured
+    ? createAgent({ ...params, responseFormat: samAnswerSchema })
+    : createAgent(params);
+};
+
+interface SamFinalState {
+  messages: BaseMessage[];
+  structuredResponse?: SamAnswer;
+}
+
+type StreamedChunk = [mode: string, data: unknown];
+
+/**
+ * Runs the agent loop and returns its final state.
+ *
+ * This is *the* execution path. `runSamAgent` and `streamSamAgent` both come
+ * through here, so there is one loop, one policy, and one set of events - the
+ * difference between them is only whether anybody is listening to `onDelta`.
+ *
+ * @internal
+ */
+export const executeSamRun = async (
+  agent: ReturnType<typeof buildSamAgent>,
+  prepared: PreparedSamRun,
+  onDelta?: (text: string) => void
+): Promise<SamFinalState> => {
+  const stream = await agent.stream(
+    { messages: prepared.history },
+    // `values` carries the state after each step, so the last one is the final
+    // state; `messages` carries the model's output as it is produced.
+    { ...prepared.invokeConfig, streamMode: ["values", "messages"] }
+  );
+
+  let finalState: SamFinalState = { messages: prepared.history };
+
+  for await (const chunk of stream as AsyncIterable<StreamedChunk>) {
+    const [mode, data] = chunk;
+
+    if (mode === "values") {
+      finalState = data as SamFinalState;
+      continue;
+    }
+
+    if (mode === "messages" && onDelta) {
+      const [message] = data as [BaseMessage, Record<string, unknown>];
+      const text = visibleAssistantText(message);
+      if (text) onDelta(text);
+    }
+  }
+
+  return finalState;
+};
+
+/**
+ * The part of a model message a founder is meant to read.
+ *
+ * Anthropic returns reasoning as separate content blocks alongside the reply.
+ * Only `text` blocks are returned here, so thinking, redacted thinking, and
+ * tool-argument fragments cannot reach a stream. Tool *results* arrive on this
+ * channel too and are excluded outright - their sanitized form is the tool
+ * event, not the transcript.
+ */
+const visibleAssistantText = (message: BaseMessage): string => {
+  if (!(message instanceof AIMessage)) return "";
+
+  const { content } = message;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        typeof block === "object" &&
+        block !== null &&
+        (block as { type?: unknown }).type === "text" &&
+        typeof (block as { text?: unknown }).text === "string"
+    )
+    .map((block) => block.text)
+    .join("");
+};
+
+/** @internal Assembles the result of a run that reached an answer. */
+export const completedSamResult = (
+  prepared: PreparedSamRun,
+  state: SamFinalState
+): SamStructuredRunResult => {
+  const text = state.structuredResponse?.answer ?? finalText(state.messages);
+  const run = prepared.recorder.finish("completed", { text });
+
+  return {
+    outcome: "completed",
+    ok: true,
+    text,
+    initialContext: prepared.initialContext,
+    toolCalls: collectToolCalls(state.messages),
+    messages: state.messages,
+    structured: state.structuredResponse,
+    run,
+    failures: run.failures,
+    degraded: run.degraded,
+  };
+};
+
+/** @internal Assembles the result of a run that stopped without an answer. */
+export const failedSamResult = (
+  prepared: PreparedSamRun,
   error: unknown
-): SamRunResult => {
+): SamStructuredRunResult => {
   const outcome = classifyRunFailure(error, {
-    cancelled: input.signal?.aborted ?? false,
+    cancelled: prepared.callerSignal?.aborted ?? false,
     timedOut: prepared.deadline.aborted,
     lastFailureStage: prepared.recorder.lastFailureStage(),
   });
-  const run = prepared.recorder.finish(outcome);
+  const message = summariseError(error);
+  const run = prepared.recorder.finish(outcome, { error: message });
 
   return {
     outcome,
@@ -303,7 +436,7 @@ const failedResult = (
     run,
     failures: run.failures,
     degraded: run.degraded,
-    error: summariseError(error),
+    error: message,
   };
 };
 
@@ -316,36 +449,13 @@ const failedResult = (
  * as a run with no company context, because that is the caller's bug.
  */
 export const runSamAgent = async (input: SamRunInput): Promise<SamRunResult> => {
-  const prepared = await prepareRun(input);
+  const prepared = await prepareSamRun(input);
 
   try {
-    const agent = createAgent(
-      agentParams({
-        ...input,
-        systemPrompt: prepared.systemPrompt,
-        recorder: prepared.recorder,
-        resolvedPolicy: prepared.policy,
-      })
-    );
-    const result = await agent.invoke(
-      { messages: prepared.history },
-      prepared.invokeConfig
-    );
-    const run = prepared.recorder.finish("completed");
-
-    return {
-      outcome: "completed",
-      ok: true,
-      text: finalText(result.messages),
-      initialContext: prepared.initialContext,
-      toolCalls: collectToolCalls(result.messages),
-      messages: result.messages,
-      run,
-      failures: run.failures,
-      degraded: run.degraded,
-    };
+    const state = await executeSamRun(buildSamAgent(input, prepared), prepared);
+    return completedSamResult(prepared, state);
   } catch (error) {
-    return failedResult(prepared, input, error);
+    return failedSamResult(prepared, error);
   }
 };
 
@@ -353,37 +463,15 @@ export const runSamAgent = async (input: SamRunInput): Promise<SamRunResult> => 
 export const runSamAgentStructured = async (
   input: SamRunInput
 ): Promise<SamStructuredRunResult> => {
-  const prepared = await prepareRun(input);
+  const prepared = await prepareSamRun(input);
 
   try {
-    const agent = createAgent({
-      ...agentParams({
-        ...input,
-        systemPrompt: prepared.systemPrompt,
-        recorder: prepared.recorder,
-        resolvedPolicy: prepared.policy,
-      }),
-      responseFormat: samAnswerSchema,
-    });
-    const result = await agent.invoke(
-      { messages: prepared.history },
-      prepared.invokeConfig
+    const state = await executeSamRun(
+      buildSamAgent(input, prepared, true),
+      prepared
     );
-    const run = prepared.recorder.finish("completed");
-
-    return {
-      outcome: "completed",
-      ok: true,
-      text: result.structuredResponse.answer,
-      initialContext: prepared.initialContext,
-      toolCalls: collectToolCalls(result.messages),
-      messages: result.messages,
-      structured: result.structuredResponse,
-      run,
-      failures: run.failures,
-      degraded: run.degraded,
-    };
+    return completedSamResult(prepared, state);
   } catch (error) {
-    return failedResult(prepared, input, error);
+    return failedSamResult(prepared, error);
   }
 };

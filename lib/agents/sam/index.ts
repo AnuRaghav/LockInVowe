@@ -14,6 +14,8 @@
  *    anything else through the retrieval tools mid-loop.
  * 4. The LLM does not decide how long it runs. The harness owns budgets,
  *    deadlines, retries, and the termination reason. See `harness/`.
+ * 5. A run is observable while it happens, on Sam's own event contract - never
+ *    LangChain's. See `harness/events.ts` and {@link streamSamAgent}.
  */
 export {
   createSamAgent,
@@ -25,6 +27,8 @@ export {
   type SamRunResult,
   type SamStructuredRunResult,
 } from "@/lib/agents/sam/agent";
+
+export { streamSamAgent, type SamRunStream } from "@/lib/agents/sam/stream";
 
 export {
   DEFAULT_SAM_MODEL,
@@ -68,6 +72,7 @@ export {
   DEFAULT_SAM_TOOL_POLICY,
   SAM_TOOL_POLICIES,
   retryableToolNames,
+  samToolLabel,
   samToolPolicy,
   toolCallCeilings,
   type SamToolKind,

@@ -43,12 +43,32 @@ export {
   summariseError,
   type SamContextBudget,
   type SamModelCallRecord,
-  type SamRunEvent,
-  type SamRunObserver,
   type SamRunRecord,
   type SamTokenUsage,
   type SamToolCallRecord,
 } from "@/lib/agents/sam/harness/observability";
+
+export {
+  isTerminalSamEvent,
+  type SamContextBuiltEvent,
+  type SamContextFailedEvent,
+  type SamMessageDeltaEvent,
+  type SamModelCompletedEvent,
+  type SamModelFailedEvent,
+  type SamModelStartedEvent,
+  type SamRunCompletedEvent,
+  type SamRunEvent,
+  type SamRunEventType,
+  type SamRunObserver,
+  type SamRunStartedEvent,
+  type SamRunTerminatedEvent,
+  type SamRunTrigger,
+  type SamToolAwaitingApprovalEvent,
+  type SamToolCompletedEvent,
+  type SamToolFailedEvent,
+  type SamToolRepeatBlockedEvent,
+  type SamToolStartedEvent,
+} from "@/lib/agents/sam/harness/events";
 
 export { measureSamContext } from "@/lib/agents/sam/harness/context-budget";
 

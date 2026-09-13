@@ -14,6 +14,7 @@ import {
 import type { SamExecutionPolicy } from "@/lib/agents/sam/harness/policy";
 import {
   SAM_TOOL_POLICIES,
+  samToolLabel,
   samToolPolicy,
   type SamToolPolicy,
   type SamToolPolicyRegistry,
@@ -63,12 +64,33 @@ const textOf = (message: ToolMessage): string =>
   typeof message.content === "string" ? message.content : JSON.stringify(message.content);
 
 /** Reads the `{ ok }` envelope every Sam tool returns, when there is one. */
-const envelopeOf = (content: string): { ok?: boolean; error?: string } => {
+const envelopeOf = (
+  content: string
+): { ok?: boolean; error?: string; data?: unknown } => {
   try {
-    const parsed = JSON.parse(content) as { ok?: boolean; error?: string };
+    const parsed = JSON.parse(content) as {
+      ok?: boolean;
+      error?: string;
+      data?: unknown;
+    };
     return typeof parsed?.ok === "boolean" ? parsed : {};
   } catch {
     return {};
+  }
+};
+
+/**
+ * Applies a tool's declared summariser, defensively.
+ *
+ * A summariser is application code we wrote, but it runs on a payload; if it
+ * throws, the run must not care and nothing is summarised.
+ */
+const summaryOf = (policy: SamToolPolicy, data: unknown): string | undefined => {
+  if (!policy.summarize) return undefined;
+  try {
+    return policy.summarize(data);
+  } catch {
+    return undefined;
   }
 };
 
@@ -120,6 +142,7 @@ export const createSamExecutionMiddleware = ({
     name: "SamExecutionMiddleware",
 
     async wrapModelCall(request, handler) {
+      const index = recorder.modelStarted();
       const startedAt = Date.now();
 
       try {
@@ -129,19 +152,17 @@ export const createSamExecutionMiddleware = ({
           () => new SamCallTimeoutError("model", policy.modelCallTimeoutMs)
         );
 
-        recorder.modelCall({
-          durationMs: Date.now() - startedAt,
-          ok: true,
-          usage: readUsage(response),
-        });
+        recorder.modelCall(
+          {
+            durationMs: Date.now() - startedAt,
+            ok: true,
+            usage: readUsage(response),
+          },
+          index
+        );
 
         return response;
       } catch (error) {
-        recorder.modelCall({
-          durationMs: Date.now() - startedAt,
-          ok: false,
-          error: summariseError(error),
-        });
         const retryable = isRetryableError(error);
         recorder.failure({
           stage: "model",
@@ -151,6 +172,14 @@ export const createSamExecutionMiddleware = ({
           critical: !retryable,
           retryable,
         });
+        recorder.modelCall(
+          {
+            durationMs: Date.now() - startedAt,
+            ok: false,
+            error: summariseError(error),
+          },
+          index
+        );
         throw error;
       }
     },
@@ -158,23 +187,17 @@ export const createSamExecutionMiddleware = ({
     async wrapToolCall(request, handler) {
       const { toolCall, runtime } = request;
       const name = toolCall.name;
+      const callId = toolCall.id ?? name;
       const toolPolicyForCall = samToolPolicy(name, toolPolicies);
+      const label = samToolLabel(name, toolPolicies);
       const startedAt = Date.now();
 
       const finish = (message: ToolMessage, truncated = false): ToolMessage => {
         const content = textOf(message);
-        const { ok, error } = envelopeOf(content);
-        recorder.toolCall({
-          name,
-          kind: toolPolicyForCall.kind,
-          durationMs: Date.now() - startedAt,
-          ok: ok !== false,
-          error: ok === false ? summariseError(error ?? "Tool returned an error.") : undefined,
-          resultChars: content.length,
-          truncated,
-        });
+        const { ok, error, data } = envelopeOf(content);
+        const failed = ok === false;
 
-        if (ok === false) {
+        if (failed) {
           recorder.failure({
             stage: "tool",
             name,
@@ -186,10 +209,25 @@ export const createSamExecutionMiddleware = ({
           });
         }
 
+        recorder.toolCall({
+          callId,
+          name,
+          kind: toolPolicyForCall.kind,
+          durationMs: Date.now() - startedAt,
+          ok: !failed,
+          error: failed ? summariseError(error ?? "Tool returned an error.") : undefined,
+          resultChars: content.length,
+          truncated,
+          summary: failed ? undefined : summaryOf(toolPolicyForCall, data),
+        });
+
         return message;
       };
 
+      recorder.toolStarted({ callId, name, kind: toolPolicyForCall.kind, label });
+
       if (toolPolicyForCall.requiresApproval) {
+        recorder.awaitingApproval({ callId, name, kind: toolPolicyForCall.kind, label });
         const context = runtime.context as { companyId?: string } | undefined;
         const approved = await approver?.requestApproval({
           runId: recorder.runId,
@@ -205,7 +243,7 @@ export const createSamExecutionMiddleware = ({
               content: toolEnvelope({
                 error: `"${name}" changes company state and needs the founder's approval, which this run cannot obtain. Tell the founder what you would do and ask them to confirm.`,
               }),
-              tool_call_id: toolCall.id ?? name,
+              tool_call_id: callId,
               name,
               status: "error",
             })
@@ -228,7 +266,15 @@ export const createSamExecutionMiddleware = ({
         if (!(raw instanceof ToolMessage)) return raw;
         result = raw;
       } catch (error) {
+        recorder.failure({
+          stage: "tool",
+          name,
+          message: summariseError(error),
+          critical: toolPolicyForCall.kind !== "read_only",
+          retryable: isRetryableError(error) && toolPolicyForCall.retryable,
+        });
         recorder.toolCall({
+          callId,
           name,
           kind: toolPolicyForCall.kind,
           durationMs: Date.now() - startedAt,
@@ -236,13 +282,6 @@ export const createSamExecutionMiddleware = ({
           error: summariseError(error),
           resultChars: 0,
           truncated: false,
-        });
-        recorder.failure({
-          stage: "tool",
-          name,
-          message: summariseError(error),
-          critical: toolPolicyForCall.kind !== "read_only",
-          retryable: isRetryableError(error) && toolPolicyForCall.retryable,
         });
         throw error;
       }
@@ -258,7 +297,7 @@ export const createSamExecutionMiddleware = ({
               error: `Result was ${content.length} characters, over the ${policy.maxToolResultChars} character limit. Narrow the request (for example a smaller \`limit\`) and call again.`,
               preview: content.slice(0, 500),
             }),
-            tool_call_id: toolCall.id ?? name,
+            tool_call_id: callId,
             name,
             status: "error",
           }),
@@ -273,6 +312,7 @@ export const createSamExecutionMiddleware = ({
 export interface SamNoProgressMiddlewareOptions {
   policy: SamExecutionPolicy;
   recorder: SamRunRecorder;
+  toolPolicies?: SamToolPolicyRegistry;
 }
 
 /**
@@ -289,6 +329,7 @@ export interface SamNoProgressMiddlewareOptions {
 export const createSamNoProgressMiddleware = ({
   policy,
   recorder,
+  toolPolicies = SAM_TOOL_POLICIES,
 }: SamNoProgressMiddlewareOptions) => {
   // One map per run - the middleware is built by the harness per invocation.
   const attempts = new Map<string, number>();
@@ -307,12 +348,11 @@ export const createSamNoProgressMiddleware = ({
       }
 
       if (seen > 1) {
-        recorder.failure({
-          stage: "tool",
+        recorder.repeatBlocked({
+          callId: toolCall.id ?? toolCall.name,
           name: toolCall.name,
-          message: `Blocked repeat #${seen} of an identical call.`,
-          critical: false,
-          retryable: false,
+          kind: samToolPolicy(toolCall.name, toolPolicies).kind,
+          attempt: seen,
         });
 
         return new ToolMessage({
