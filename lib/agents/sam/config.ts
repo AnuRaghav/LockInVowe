@@ -5,8 +5,15 @@
  * is resolved here so the rest of the package never reads `process.env`.
  */
 
-/** Default Claude model backing Sam. Override with `SAM_MODEL`. */
-export const DEFAULT_SAM_MODEL = "claude-sonnet-4-5";
+/**
+ * Default Claude model backing Sam. Override with `SAM_MODEL`.
+ *
+ * Must support adaptive thinking (see lib/agents/sam/model.ts) - Anthropic
+ * rejects the request outright on a model that doesn't, which is what
+ * `claude-sonnet-4-5` did once it aged out of that support. Verified against
+ * the live API before pinning this.
+ */
+export const DEFAULT_SAM_MODEL = "claude-sonnet-5";
 
 /** Default output cap. Sam's answers are short; tool loops do the heavy work. */
 export const DEFAULT_SAM_MAX_TOKENS = 4096;
