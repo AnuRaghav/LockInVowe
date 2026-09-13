@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { WorkPanel } from "@/components/chat/ActivityTrail";
 import { CopyButton } from "@/components/chat/CopyButton";
+import { SamOrb } from "@/components/SamOrb";
 import { ChartFigure } from "@/components/chat/ChartFigure";
 import { Markdown } from "@/components/chat/Markdown";
 import type { ActivityStep } from "@/lib/chat/activity";
@@ -147,8 +148,13 @@ export function EmptyConversation({
   disabled?: boolean;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col items-center justify-center gap-7 px-5 py-16 text-center sm:px-6">
-      <div className="flex flex-col gap-2">
+    <div className="relative isolate mx-auto flex w-full max-w-[64rem] flex-1 flex-col items-center justify-center gap-7 overflow-hidden px-5 py-16 text-center sm:px-6">
+      <SamOrb
+        energy={0.28}
+        points={760}
+        className="pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-square w-[min(82vw,34rem)] -translate-x-1/2 -translate-y-1/2 opacity-45 [mask-image:radial-gradient(circle,black_42%,transparent_78%)]"
+      />
+      <div className="relative z-10 flex flex-col gap-2">
         <h2 className="text-balance text-2xl font-semibold tracking-tight text-foreground">
           Ask Sam.
         </h2>
@@ -158,7 +164,7 @@ export function EmptyConversation({
         </p>
       </div>
       {onAsk && (
-        <ul className="flex flex-col items-center gap-2">
+        <ul className="relative z-10 flex flex-col items-center gap-2">
           {STARTERS.map((question) => (
             <li key={question}>
               <button
