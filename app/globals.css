@@ -1,26 +1,119 @@
 @import "tailwindcss";
 
+/* One committed dark world, taken from the Sam orb reference: founders checking numbers late, low light. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: #1f2220;
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-strong: rgba(255, 255, 255, 0.09);
+  --border: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --foreground: #f4f5f2;
+  --muted: rgba(244, 245, 242, 0.68);
+  --muted-2: rgba(244, 245, 242, 0.5);
+  --accent: #5aba41;
+  --accent-strong: #74cc5b;
+  --accent-ink: #0e1a0b;
+  --accent-soft: rgba(90, 186, 65, 0.14);
+  --danger: #ec9a84;
+  --danger-soft: rgba(224, 122, 95, 0.16);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--font-instrument-sans);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    background: var(--background);
+  }
+
+  body {
+    background:
+      radial-gradient(90% 60% at 50% -10%, rgba(90, 186, 65, 0.1), transparent 60%),
+      radial-gradient(60% 50% at 100% 100%, rgba(255, 255, 255, 0.03), transparent 70%),
+      var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), system-ui, sans-serif;
+    caret-color: var(--accent);
+  }
+
+  ::selection {
+    background: rgba(90, 186, 65, 0.35);
+    color: var(--foreground);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 8px;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.6;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 4px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/*
+ * Frosted glass: a web approximation of Apple's material, not Apple's official Liquid Glass.
+ * Used only on panels that float over the orb glow, where the blur has something to refract.
+ */
+@utility glass {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025) 45%),
+    rgba(34, 38, 35, 0.55);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 24px 60px -12px rgba(8, 12, 9, 0.6);
+
+  @media (prefers-reduced-transparency: reduce) {
+    background: #2a2e2b;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@utility glass-pill {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+
+  @media (prefers-reduced-transparency: reduce) {
+    background: #2f3330;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
