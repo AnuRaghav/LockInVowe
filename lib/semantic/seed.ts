@@ -1,4 +1,3 @@
-import { DEV_COMPANY_ID } from "@/lib/company/context";
 import type {
   ReviseSemanticBlockInput,
   SemanticBlockWriter,
@@ -151,9 +150,11 @@ export const SEED_SEMANTIC_REVISIONS: SeedRevision[] = [
  * updater will, so a seed that succeeds is evidence the write path works, and
  * the resulting history is a real history rather than a fabricated one.
  */
+const FALLBACK_SEED_COMPANY_ID = "00000000-0000-4000-8000-000000000001";
+
 export const seedSemanticBlocks = async (
   writer: SemanticBlockWriter,
-  scope: SemanticScope = { companyId: DEV_COMPANY_ID },
+  scope: SemanticScope = { companyId: FALLBACK_SEED_COMPANY_ID },
   revisions: SeedRevision[] = SEED_SEMANTIC_REVISIONS
 ): Promise<void> => {
   // Sequential, not `Promise.all`: these are revisions of shared topics, and

@@ -46,7 +46,12 @@ const hasActivePayrollConnection = async (companyId: string): Promise<boolean> =
 
 /** Current onboarding state: derived cash/payroll/revenue plus whatever has been saved so far. */
 export async function GET(req: Request) {
-  const { companyId } = resolveCompanyContext(req);
+  let companyId: string;
+  try {
+    companyId = (await resolveCompanyContext(req)).companyId;
+  } catch {
+    return Response.json({ error: "Sign in required." }, { status: 401 });
+  }
 
   const [
     cashOnHandUsd,
@@ -96,7 +101,12 @@ const isFiniteNonNegative = (value: unknown): value is number =>
 
 /** Validates and persists the founder's onboarding answers. */
 export async function POST(req: Request) {
-  const { companyId } = resolveCompanyContext(req);
+  let companyId: string;
+  try {
+    companyId = (await resolveCompanyContext(req)).companyId;
+  } catch {
+    return Response.json({ error: "Sign in required." }, { status: 401 });
+  }
   const body = await req.json().catch(() => null);
 
   if (

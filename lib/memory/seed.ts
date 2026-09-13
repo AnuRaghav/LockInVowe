@@ -1,4 +1,3 @@
-import { DEV_COMPANY_ID } from "@/lib/company/context";
 import { InMemoryPersistentMemory } from "@/lib/memory/in-memory";
 import { MEMORY_KINDS, type MemoryRecord } from "@/lib/memory/types";
 
@@ -40,8 +39,11 @@ export const SEEDED_MEMORIES: MemoryRecord[] = [
   },
 ];
 
+/** Fallback id when no company is specified - only used by the no-DB dev/test stub. */
+const FALLBACK_SEED_COMPANY_ID = "00000000-0000-4000-8000-000000000001";
+
 /** A persistent memory preloaded with {@link SEEDED_MEMORIES} for one company. */
 export const createSeededPersistentMemory = (
-  companyId: string = DEV_COMPANY_ID
+  companyId: string = FALLBACK_SEED_COMPANY_ID
 ): InMemoryPersistentMemory =>
   new InMemoryPersistentMemory({ [companyId]: SEEDED_MEMORIES });

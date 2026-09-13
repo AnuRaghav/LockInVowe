@@ -1,38 +1,38 @@
-import { DEV_SESSION_COOKIE } from "@/lib/company/context";
 import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
-const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+import { getSupabaseConfig } from "@/lib/supabase/env";
 
-/**
- * Gives each browser its own dev-mode company (see lib/company/context.ts) by
- * minting a random session id on first visit. Runs in every environment,
- * including a shared preview/production deployment - the value is generated
- * here, server-side, never accepted from the client, so it carries none of
- * the risk a client-suppliable identifier would.
- *
- * Mutating `request.cookies` (rather than only `response.cookies`) makes the
- * new cookie visible to this same request once it reaches a route handler,
- * not just to the browser on the *next* one.
- */
-const ensureDevSessionCookie = (request: NextRequest): string | null => {
-  if (request.cookies.get(DEV_SESSION_COOKIE)?.value) return null;
+/** Reachable without a signed-in founder. Everything else redirects to /login. */
+const PUBLIC_PATHS = ["/login", "/signup", "/auth"];
 
-  const id = crypto.randomUUID();
-  request.cookies.set(DEV_SESSION_COOKIE, id);
-  return id;
-};
+const isPublicPath = (pathname: string) =>
+  PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
 export async function proxy(request: NextRequest) {
-  const newSessionId = ensureDevSessionCookie(request);
   const response = await updateSession(request);
+  const { pathname } = request.nextUrl;
 
-  if (newSessionId) {
-    response.cookies.set(DEV_SESSION_COOKIE, newSessionId, {
-      path: "/",
-      sameSite: "lax",
-      maxAge: ONE_YEAR_SECONDS,
-    });
+  // API routes enforce auth themselves (resolveCompanyContext throws
+  // UnauthenticatedError, routes turn that into a 401) - a redirect here
+  // would hand a fetch() caller an HTML login page instead of JSON.
+  if (pathname.startsWith("/api/") || isPublicPath(pathname)) {
+    return response;
+  }
+
+  const { url, key } = getSupabaseConfig();
+  const supabase = createServerClient(url, key, {
+    cookies: { getAll: () => request.cookies.getAll() },
+  });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   return response;

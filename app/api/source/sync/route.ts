@@ -12,7 +12,12 @@ export const runtime = "nodejs";
  * written into the handler.
  */
 export async function POST(req: Request) {
-  const { companyId } = resolveCompanyContext(req);
+  let companyId: string;
+  try {
+    companyId = (await resolveCompanyContext(req)).companyId;
+  } catch {
+    return Response.json({ error: "Sign in required." }, { status: 401 });
+  }
   const body = await req.json().catch(() => null);
   const connectionId = body?.connectionId;
 

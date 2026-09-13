@@ -2,7 +2,7 @@ import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from "@langc
 import { createDataStreamResponse, type JSONValue } from "ai";
 
 import { streamSamAgent, type SamRunEvent, type SamRunOutcome } from "@/lib/agents/sam";
-import { resolveCompanyContext } from "@/lib/company/context";
+import { resolveCompanyContext, UnauthenticatedError } from "@/lib/company/context";
 
 export const runtime = "nodejs";
 
@@ -141,16 +141,23 @@ export async function POST(req: Request) {
   };
 
   // Company context is resolved once, here, from the request - never from the
-  // conversation and never from a tool argument. TEMPORARY: with no auth yet
-  // this returns a fixed development company. See `lib/company/context.ts`.
+  // conversation and never from a tool argument. See `lib/company/context.ts`.
   //
   // `threadId` scopes working memory to this conversation. Long-lived company
   // knowledge is *not* scoped by it: it is reached through the memory module,
   // which is why a fact learned in one thread is available in the next.
-  const context = {
-    ...resolveCompanyContext(req),
-    threadId: typeof threadId === "string" && threadId.trim() ? threadId.trim() : undefined,
-  };
+  let context: { companyId: string; threadId?: string };
+  try {
+    context = {
+      ...(await resolveCompanyContext(req)),
+      threadId: typeof threadId === "string" && threadId.trim() ? threadId.trim() : undefined,
+    };
+  } catch (error) {
+    if (error instanceof UnauthenticatedError) {
+      return Response.json({ error: "Sign in required." }, { status: 401 });
+    }
+    throw error;
+  }
 
   return createDataStreamResponse({
     async execute(writer) {

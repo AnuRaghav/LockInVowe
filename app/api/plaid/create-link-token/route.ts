@@ -16,7 +16,12 @@ export const runtime = "nodejs";
  * app/plaid-oauth/page.tsx, which is what that page resumes into.
  */
 export async function POST(req: Request) {
-  const { companyId } = resolveCompanyContext(req);
+  let companyId: string;
+  try {
+    companyId = (await resolveCompanyContext(req)).companyId;
+  } catch {
+    return Response.json({ error: "Sign in required." }, { status: 401 });
+  }
 
   try {
     const plaid = getPlaidClient();
