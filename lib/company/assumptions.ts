@@ -1,3 +1,4 @@
+import { minorUnitExponent } from "@/lib/source/money";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -75,26 +76,60 @@ export const setCompanyAssumption = async (
   if (error) throw error;
 };
 
+/** Account kinds counted as cash for runway purposes - not credit, not investment. */
+const CASH_ACCOUNT_KINDS = ["checking", "savings"] as const;
+
 /**
- * Derives current cash on hand from synced bank balances and stores it as a
- * `derived` assumption. Call this once bank accounts are connected/synced,
- * before asking the founder anything the data already answers.
+ * Derives current cash on hand from the Source Layer (see
+ * lib/source/store.ts) and stores it as a `derived` assumption. Call this
+ * once accounts are connected/synced, before asking the founder anything the
+ * data already answers.
+ *
+ * Reads the latest {@link https://.../source_balance_observations} per
+ * checking/savings account and sums balances already denominated in USD -
+ * mixed-currency cash isn't a case the MVP onboarding flow handles yet.
  */
 export const deriveCashFromBankAccounts = async (
   companyId: string
 ): Promise<number | null> => {
   const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from("bank_accounts")
-    .select("current_balance_usd, type")
-    .eq("company_id", companyId);
 
-  if (error) throw error;
-  if (!data || data.length === 0) return null;
+  const { data: accounts, error: accountsError } = await supabase
+    .from("source_accounts")
+    .select("id")
+    .eq("company_id", companyId)
+    .in("kind", CASH_ACCOUNT_KINDS);
 
-  const cashOnHandUsd = data
-    .filter((account) => account.type === "depository")
-    .reduce((sum, account) => sum + (account.current_balance_usd ?? 0), 0);
+  if (accountsError) throw accountsError;
+  if (!accounts || accounts.length === 0) return null;
+
+  const accountIds = accounts.map((account) => account.id);
+
+  const { data: observations, error: observationsError } = await supabase
+    .from("source_balance_observations")
+    .select("account_id, current_minor, currency, observed_at")
+    .eq("company_id", companyId)
+    .in("account_id", accountIds)
+    .order("observed_at", { ascending: false });
+
+  if (observationsError) throw observationsError;
+  if (!observations || observations.length === 0) return null;
+
+  // First row per account, since observations are ordered newest first.
+  const latestByAccount = new Map<string, (typeof observations)[number]>();
+  for (const observation of observations) {
+    if (!latestByAccount.has(observation.account_id)) {
+      latestByAccount.set(observation.account_id, observation);
+    }
+  }
+
+  const cashOnHandUsd = Array.from(latestByAccount.values())
+    .filter((observation) => observation.currency === "USD")
+    .reduce(
+      (sum, observation) =>
+        sum + observation.current_minor / 10 ** minorUnitExponent(observation.currency),
+      0
+    );
 
   await setCompanyAssumption(companyId, ASSUMPTION_KEYS.cashOnHandUsd, cashOnHandUsd, "derived");
   return cashOnHandUsd;
