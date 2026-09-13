@@ -17,7 +17,7 @@ export interface DigestInsight {
   /** Stable within one generation - not persisted (yet). Used as a React key. */
   id: string;
   tone: InsightTone;
-  /** Short, all-caps eyebrow (e.g. "CASH · RUNWAY") - which running analysis this came from. */
+  /** Short label (e.g. "Cash and runway") - which running analysis this came from. */
   category: string;
   /** One line. What the insight is, not the full explanation. */
   title: string;

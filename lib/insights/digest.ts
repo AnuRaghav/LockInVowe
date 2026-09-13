@@ -27,8 +27,8 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "cash-runway",
     tone: "warning",
-    category: "CASH · RUNWAY",
-    title: "Cash is trending down — plan your next raise",
+    category: "Cash and runway",
+    title: "Cash is trending down. Plan your next raise.",
     note: "You've burned through $544k over the past year. At the current pace, that leaves roughly 7 months of runway before you need to raise or cut costs.",
     stat: { value: 356381, label: "Cash on hand today", prefix: "$" },
     chart: {
@@ -46,9 +46,9 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "revenue-rebound",
     tone: "positive",
-    category: "REVENUE · GROWTH",
+    category: "Revenue growth",
     title: "Revenue rebounded hard after a rough Q2",
-    note: "A key customer churned in March, cutting monthly revenue 30%. Since then, new logo wins have driven revenue up 148% — the fastest growth streak in the company's history.",
+    note: "A key customer churned in March, cutting monthly revenue 30%. Since then, new logo wins have driven revenue up 148%, the fastest growth streak in the company's history.",
     stat: { value: 148, label: "Revenue growth since the March low", suffix: "%" },
     chart: {
       title: "Monthly revenue",
@@ -61,9 +61,9 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "burn-trend",
     tone: "warning",
-    category: "BURN · TREND",
+    category: "Burn trend",
     title: "Burn is creeping up faster than revenue can outrun it",
-    note: "Cash consumption rose 5.8% quarter over quarter ($282.6k → $298.8k), even as revenue grew. Marketing is the biggest swing factor — worth reviewing before it becomes a trend.",
+    note: "Cash consumption rose 5.8% quarter over quarter (from $282.6k to $298.8k), even as revenue grew. Marketing is the biggest swing factor and worth reviewing before it becomes a trend.",
     stat: { value: 5.8, label: "Quarter-over-quarter increase in cash consumption", suffix: "%" },
     chart: {
       title: "Cash consumption by quarter",
@@ -73,8 +73,8 @@ export const getDailyDigest = (): DigestInsight[] => [
         {
           name: "Cash consumption",
           points: [
-            { x: "Mar–May", y: 282576 },
-            { x: "Jun–Aug", y: 298835 },
+            { x: "Mar-May", y: 282576 },
+            { x: "Jun-Aug", y: 298835 },
           ],
         },
       ],
@@ -84,9 +84,9 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "marketing-volatility",
     tone: "neutral",
-    category: "MARKETING · SPEND",
+    category: "Marketing spend",
     title: "Marketing spend swings wildly month to month",
-    note: "The biggest and smallest marketing months differ by 5.7x. Ads spend nearly tripled in November and March with no consistent cadence — a good place to tighten a budget.",
+    note: "The biggest and smallest marketing months differ by 5.7x. Ads spend nearly tripled in November and March with no consistent cadence. That makes it a good place to tighten a budget.",
     stat: { value: 5.7, label: "Swing between the biggest and smallest month", suffix: "x" },
     chart: {
       title: "Marketing spend",
@@ -99,9 +99,9 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "payroll-discipline",
     tone: "positive",
-    category: "PAYROLL · HEADCOUNT",
-    title: "Payroll has stayed disciplined — no runaway hiring",
-    note: "The team held at 5 people all year, with one retention raise in May. Payroll grew just 2.4% while revenue grew 141% over the same window — the kind of leverage investors want to see.",
+    category: "Payroll and headcount",
+    title: "Payroll has stayed disciplined with no runaway hiring",
+    note: "The team held at 5 people all year, with one retention raise in May. Payroll grew just 2.4% while revenue grew 141% over the same window. That is the kind of leverage investors want to see.",
     stat: { value: 2.4, label: "Payroll growth for the year", suffix: "%" },
     chart: {
       title: "Monthly payroll (gross)",
