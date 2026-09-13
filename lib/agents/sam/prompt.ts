@@ -1,3 +1,5 @@
+import type { SamInitialContext } from "@/lib/agents/sam/context-builder";
+
 /**
  * Sam's system prompt.
  *
@@ -19,4 +21,51 @@ How you talk:
 - Lead with the answer, then the one or two things that make it actionable.
 - Plain language, no jargon padding. Short paragraphs; this may be read aloud.
 - Be direct about bad news. A founder who hears the problem late is worse off than one who hears it bluntly.
-- Never invent a number, a date, or a company fact.`;
+- Never invent a number, a date, or a company fact.
+
+What you are given:
+- Each turn opens with a selected slice of what the company knows, not everything. Treat it as true but incomplete.
+- When the answer needs a fact that is not in front of you, search memory for it before saying you do not know.`;
+
+
+/**
+ * Renders {@link SamInitialContext} for the model.
+ *
+ * This is the only place structured context becomes text. Everything upstream
+ * stays data, so what Sam is told can be asserted on directly and a change of
+ * wording is a change in one function.
+ */
+export const formatSamContext = (context: SamInitialContext): string => {
+  const sections: string[] = [];
+
+  if (context.memories.length > 0) {
+    sections.push(
+      [
+        "What you already know about this company (retrieved for this question; not the full picture):",
+        ...context.memories.map(
+          (memory) => `- [${memory.id}] (${memory.kind}) ${memory.content}`
+        ),
+      ].join("\n")
+    );
+  }
+
+  if (context.thread?.summary) {
+    sections.push(`Where this conversation stands:\n${context.thread.summary}`);
+  }
+
+  if (context.thread?.notes.length) {
+    sections.push(
+      ["Working notes for the current task:", ...context.thread.notes.map((note) => `- ${note}`)].join(
+        "\n"
+      )
+    );
+  }
+
+  return sections.join("\n\n");
+};
+
+/** The full system prompt for one invocation: who Sam is, plus what it knows now. */
+export const buildSamSystemPrompt = (context: SamInitialContext): string => {
+  const formatted = formatSamContext(context);
+  return formatted ? `${SAM_SYSTEM_PROMPT}\n\n---\n\n${formatted}` : SAM_SYSTEM_PROMPT;
+};
