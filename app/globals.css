@@ -121,15 +121,15 @@
 @keyframes sam-first-orb-working {
   0%, 100% {
     opacity: 0.58;
-    transform: translate(-50%, -50%) scale(0.985);
+    filter: saturate(1.05);
   }
   37% {
     opacity: 0.76;
-    transform: translate(-50%, -50%) scale(1.018);
+    filter: saturate(1.28);
   }
   68% {
     opacity: 0.66;
-    transform: translate(-50%, -50%) scale(1.006);
+    filter: saturate(1.16);
   }
 }
 
