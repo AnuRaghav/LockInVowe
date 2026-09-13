@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import type { MemoryScope, PersistentMemory } from "@/lib/memory/types";
+
+const isPersistentMemory = (value: unknown): value is PersistentMemory =>
+  typeof (value as PersistentMemory | undefined)?.search === "function" &&
+  typeof (value as PersistentMemory | undefined)?.get === "function";
+
 /**
  * Trusted, server-supplied execution context for a Sam run.
  *
@@ -9,17 +15,41 @@ import { z } from "zod";
  * apart is what stops a prompt-injected or hallucinated `companyId` from
  * reaching the data layer.
  *
- * Grows with the product (userId, role, locale, ...). Add fields here, never
- * to a tool's argument schema.
+ * Two sorts of thing live here, and the distinction is worth keeping:
+ *
+ * - *Identity* (`companyId`, `threadId`): who this run is for. Grows with the
+ *   product - userId, role, locale. Add fields here, never to a tool's
+ *   argument schema.
+ * - *Capabilities* (`persistentMemory`): handles a tool needs at call time.
+ *   Injected so a run can be pointed at a different backend without any tool
+ *   knowing which one it got.
  */
-export const samContextSchema = z.object({
+export const samRuntimeContextSchema = z.object({
   companyId: z
     .string()
     .min(1, "companyId is required for every Sam run.")
     .describe("The company every tool in this run reads and writes."),
+  threadId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "The conversation this run belongs to. Scopes working memory; absent for one-off runs."
+    ),
+  persistentMemory: z
+    .custom<PersistentMemory>(isPersistentMemory)
+    .optional()
+    .describe(
+      "Long-lived company knowledge the retrieval tools read. Defaults to the application's memory module."
+    ),
 });
 
-export type SamContext = z.infer<typeof samContextSchema>;
+export type SamRuntimeContext = z.infer<typeof samRuntimeContextSchema>;
+
+/** @deprecated Use {@link samRuntimeContextSchema}. */
+export const samContextSchema = samRuntimeContextSchema;
+/** @deprecated Use {@link SamRuntimeContext}. */
+export type SamContext = SamRuntimeContext;
 
 /** Thrown when a tool runs without usable company context. */
 export class MissingSamContextError extends Error {
@@ -43,8 +73,13 @@ export class MissingSamContextError extends Error {
 export const requireSamContext = (
   runtime: { context?: unknown },
   toolName: string
-): SamContext => {
-  const parsed = samContextSchema.safeParse(runtime?.context);
+): SamRuntimeContext => {
+  const parsed = samRuntimeContextSchema.safeParse(runtime?.context);
   if (!parsed.success) throw new MissingSamContextError(toolName);
   return parsed.data;
 };
+
+/** The company scope every memory read is confined to. */
+export const memoryScope = ({ companyId }: SamRuntimeContext): MemoryScope => ({
+  companyId,
+});
