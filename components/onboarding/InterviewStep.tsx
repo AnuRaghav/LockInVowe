@@ -6,6 +6,8 @@ import { ArrowUp, Check, Lock, UsersThree } from "@phosphor-icons/react";
 import { SkipInterview } from "@/components/onboarding/SkipInterview";
 import { TeamEditor } from "@/components/onboarding/TeamEditor";
 import { chip, pillPrimary, pillSecondary } from "@/components/onboarding/styles";
+import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
+import { BlurFade } from "@/components/ui/blur-fade";
 import { GENERAL_REPLIES, PERSONAL_DECLINE_REPLY } from "@/lib/onboarding/choices";
 import type { OnboardingTurnResult } from "@/lib/onboarding/interview";
 import type { InterviewStateView, InterviewTurnView } from "@/lib/onboarding/state";
@@ -20,7 +22,10 @@ function Turn({ turn }: { turn: InterviewTurnView }) {
 
   return (
     <li className={cn("flex", founder ? "justify-end" : "justify-start")}>
-      <div
+      <BlurFade
+        duration={0.35}
+        offset={6}
+        blur="4px"
         className={cn(
           "max-w-[85%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed",
           founder ? "rounded-br-md bg-accent-soft text-foreground" : "rounded-bl-md bg-white/[0.05] text-foreground"
@@ -29,12 +34,12 @@ function Turn({ turn }: { turn: InterviewTurnView }) {
         {turn.text === null ? (
           <span className="inline-flex items-center gap-1.5 text-[13px] text-muted">
             <Lock weight="bold" className="h-3.5 w-3.5" />
-            {founder ? "Personal answer · not kept in the transcript" : "Personal question"}
+            {founder ? "Personal answer, not kept in the transcript" : "Personal question"}
           </span>
         ) : (
           <p className="whitespace-pre-wrap">{turn.text}</p>
         )}
-      </div>
+      </BlurFade>
     </li>
   );
 }
@@ -53,7 +58,7 @@ export function InterviewStep({ onFinished, onSkipped }: { onFinished: () => voi
   const [error, setError] = useState<string | null>(null);
   const [showTeam, setShowTeam] = useState(false);
   const started = useRef(false);
-  const bottom = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
 
   const send = useCallback(async (message?: string) => {
     setThinking(true);
@@ -109,7 +114,9 @@ export function InterviewStep({ onFinished, onSkipped }: { onFinished: () => voi
   }, [send]);
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // Scroll only the transcript; scrollIntoView would also yank the page under the founder.
+    const el = scroller.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [interview, pendingTurn, thinking]);
 
   const submit = (text: string) => {
@@ -162,20 +169,22 @@ export function InterviewStep({ onFinished, onSkipped }: { onFinished: () => voi
         </ol>
       )}
 
-      <div className="flex max-h-[min(60vh,32rem)] min-h-[16rem] flex-col overflow-y-auto rounded-2xl border border-border bg-black/20 p-3 sm:p-4">
+      <div
+        ref={scroller}
+        className="flex max-h-[min(60vh,32rem)] min-h-[16rem] flex-col overflow-y-auto overscroll-contain rounded-2xl border border-border bg-black/20 p-3 sm:p-4"
+      >
         <ul aria-live="polite" className="flex flex-col gap-3">
           {turns.map((turn, i) => (
             <Turn key={`${turn.at}-${i}`} turn={turn} />
           ))}
-          {thinking && (
+          {(thinking || (!interview && !error)) && (
             <li className="flex justify-start">
-              <span className="rounded-2xl rounded-bl-md bg-white/[0.05] px-4 py-3 text-[13px] text-muted">
-                Sam is thinking…
+              <span className="rounded-2xl rounded-bl-md bg-white/[0.05] px-4 py-3 text-[13px]">
+                <AnimatedShinyText>{interview ? "Sam is thinking…" : "Opening your interview…"}</AnimatedShinyText>
               </span>
             </li>
           )}
         </ul>
-        <div ref={bottom} />
       </div>
 
       {error && (
@@ -219,7 +228,7 @@ export function InterviewStep({ onFinished, onSkipped }: { onFinished: () => voi
             />
           )}
 
-          <div className="flex flex-wrap gap-2">
+          <div className={cn("flex flex-wrap gap-2", !interview && "invisible")}>
             {replies.map((reply) => (
               <button key={reply} type="button" onClick={() => submit(reply)} disabled={thinking} className={chip}>
                 {reply}
@@ -256,7 +265,7 @@ export function InterviewStep({ onFinished, onSkipped }: { onFinished: () => voi
               type="submit"
               disabled={thinking || !draft.trim()}
               aria-label="Send"
-              className="inline-flex h-10 w-10 flex-none items-center justify-center rounded-full bg-accent text-accent-ink transition-colors hover:bg-accent-strong disabled:opacity-40"
+              className="inline-flex h-10 w-10 flex-none items-center justify-center rounded-full bg-accent text-accent-ink transition-[background-color,transform,opacity] duration-200 hover:bg-accent-strong active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-accent disabled:active:scale-100"
             >
               <ArrowUp weight="bold" className="h-4 w-4" />
             </button>

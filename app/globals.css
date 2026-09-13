@@ -36,6 +36,20 @@
   --color-danger-soft: var(--danger-soft);
   --font-sans: var(--font-instrument-sans);
   --font-mono: var(--font-jetbrains-mono);
+
+  --animate-shiny-text: shiny-text 2.4s cubic-bezier(0.6, 0.6, 0, 1) infinite;
+
+  @keyframes shiny-text {
+    0%,
+    90%,
+    100% {
+      background-position: calc(-100% - var(--shiny-width)) 0;
+    }
+    30%,
+    60% {
+      background-position: calc(100% + var(--shiny-width)) 0;
+    }
+  }
 }
 
 @layer base {

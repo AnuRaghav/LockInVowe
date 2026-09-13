@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Plus, X } from "@phosphor-icons/react";
 
 import { inputBase, pillPrimary, pillSecondary, usd } from "@/components/onboarding/styles";
+import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
 import { cn } from "@/lib/utils";
 
 /** One person, as the table edits them: numbers kept as input strings. */
@@ -207,7 +208,11 @@ export function TeamEditor({ onSaved, onCancel }: { onSaved: () => void; onCance
   };
 
   if (loading) {
-    return <p className="rounded-2xl border border-border p-4 text-sm text-muted-2">Loading your team…</p>;
+    return (
+      <p role="status" className="rounded-2xl border border-border p-4 text-sm">
+        <AnimatedShinyText>Loading your team…</AnimatedShinyText>
+      </p>
+    );
   }
 
   return (
@@ -238,7 +243,7 @@ export function TeamEditor({ onSaved, onCancel }: { onSaved: () => void; onCance
       )}
       <div className="flex flex-wrap items-center justify-end gap-3">
         {incomplete && (
-          <p className="mr-auto text-[13px] text-muted-2">Every person needs a name and cost; every hire a role, date, and cost.</p>
+          <p className="mr-auto text-[13px] text-muted-2">Each person needs a name and cost. Each hire needs a role, start date, and cost.</p>
         )}
         <button type="button" onClick={onCancel} className={pillSecondary}>
           Cancel

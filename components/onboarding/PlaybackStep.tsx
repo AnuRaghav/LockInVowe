@@ -27,6 +27,26 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl border border-dashed border-border px-4 py-4 text-sm text-muted-2">{children}</p>;
 }
 
+/** Placeholder in the shape of the playback, so the page does not jump when it arrives. */
+function PlaybackSkeleton() {
+  const bar = "rounded-full bg-white/[0.06] motion-safe:animate-pulse";
+
+  return (
+    <div aria-hidden className="flex flex-col gap-8">
+      {[3, 4, 2].map((rows, s) => (
+        <div key={s} className="flex flex-col gap-3">
+          <div className={cn(bar, "h-3.5 w-40")} />
+          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-white/[0.03] p-4">
+            {Array.from({ length: rows }, (_, r) => (
+              <div key={r} className={cn(bar, "h-3", r % 2 ? "w-3/5" : "w-11/12")} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TopicCard({
   topic,
   onSave,
@@ -37,6 +57,7 @@ function TopicCard({
   onRemove?: () => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [body, setBody] = useState(topic.body);
   const [busy, setBusy] = useState(false);
 
@@ -51,7 +72,27 @@ function TopicCard({
     <li className="flex flex-col gap-2 rounded-2xl border border-border bg-white/[0.03] p-4">
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-[15px] font-medium text-foreground">{topic.title}</h3>
-        {!editing && (
+        {!editing && confirmingRemove && onRemove && (
+          <div className="flex flex-none items-center gap-1">
+            <span className="px-1 text-[13px] text-muted">Delete for good?</span>
+            <button
+              type="button"
+              onClick={() => setConfirmingRemove(false)}
+              className="rounded-lg px-2.5 py-1.5 text-[13px] text-muted transition-colors hover:bg-white/5 hover:text-foreground"
+            >
+              Keep
+            </button>
+            <button
+              type="button"
+              onClick={() => void run(onRemove)}
+              disabled={busy}
+              className="rounded-lg bg-danger-soft px-2.5 py-1.5 text-[13px] font-medium text-danger transition-opacity disabled:opacity-50"
+            >
+              {busy ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        )}
+        {!editing && !confirmingRemove && (
           <div className="flex flex-none gap-1">
             <button
               type="button"
@@ -67,8 +108,7 @@ function TopicCard({
             {onRemove && (
               <button
                 type="button"
-                onClick={() => void run(onRemove)}
-                disabled={busy}
+                onClick={() => setConfirmingRemove(true)}
                 aria-label={`Delete ${topic.title}`}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-2 transition-colors hover:bg-danger-soft hover:text-danger"
               >
@@ -157,9 +197,9 @@ function NumberRow({
             await onSave({ kind: "assumption", key: field.key, value: Number(draft) });
             setBusy(false);
           }}
-          className="rounded-full px-3 py-1.5 text-[13px] font-medium text-accent transition-opacity disabled:opacity-0"
+          className="w-16 rounded-full px-3 py-1.5 text-[13px] font-medium text-accent transition-opacity hover:text-accent-strong disabled:opacity-0"
         >
-          Save
+          {busy ? "Saving…" : "Save"}
         </button>
       </span>
     </li>
@@ -276,7 +316,15 @@ function PreferencesCard({ preferences, onSave }: { preferences: OnboardingPlayb
       <li className="flex flex-wrap items-start justify-between gap-3 py-2.5">
         <span className="text-sm text-muted">Raise without being asked</span>
         <span className="text-right text-sm text-foreground">
-          {alerts.length === 0 ? "Nothing set" : alerts.map(describeAlert).join(" · ")}
+          {alerts.length === 0 ? (
+            <span className="text-muted-2">Nothing set</span>
+          ) : (
+            alerts.map((alert) => (
+              <span key={describeAlert(alert)} className="block">
+                {describeAlert(alert)}
+              </span>
+            ))
+          )}
         </span>
       </li>
     </ul>
@@ -365,7 +413,14 @@ export function PlaybackStep({ onBack, onDone }: { onBack: () => void; onDone: (
         </p>
       </div>
 
-      {!playback && !error && <p className="text-sm text-muted-2">Loading…</p>}
+      {!playback && !error && (
+        <>
+          <p className="sr-only" role="status">
+            Loading what Sam understood
+          </p>
+          <PlaybackSkeleton />
+        </>
+      )}
 
       {playback && (
         <>
