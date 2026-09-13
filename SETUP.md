@@ -48,7 +48,9 @@ Visit `http://localhost:3000` — you should see the default Next.js page.
 - `app/api/chat/route.ts` — streaming chat endpoint (add tools/actions here)
 
 ### Database/Backend
-- `supabase/schema.sql` — database schema (track migrations here!)
+- `supabase/migrations/` — versioned SQL migrations (every schema change lives here)
+- `supabase/config.toml` — local Supabase stack config
+- `lib/supabase/types.ts` — generated database types (`npm run db:types`)
 - `lib/supabase/client.ts` — browser client for auth/queries
 - `lib/supabase/server.ts` — server client for API routes
 
@@ -77,9 +79,13 @@ You should see a streamed response from Claude. If you get an error, check that:
 ## 📝 Common Tasks
 
 ### Adding a Database Table
-1. Write the SQL in `supabase/schema.sql`
-2. Run it on your Supabase project dashboard (or use CLI)
-3. Commit the schema file
+1. `npm run db:migration add_your_table` — creates a timestamped file in `supabase/migrations/`
+2. Write the SQL in that file
+3. `npm run db:reset` — rebuilds the local database from every migration
+4. `npm run db:types` — regenerates `lib/supabase/types.ts`
+5. Commit the migration *and* the regenerated types
+
+See the Database section of the README for the full command list.
 
 ### Adding a New API Route
 1. Create `app/api/your-endpoint/route.ts`

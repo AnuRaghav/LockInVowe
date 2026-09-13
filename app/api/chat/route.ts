@@ -2,6 +2,7 @@ import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from "@langc
 import { createDataStreamResponse, type JSONValue } from "ai";
 
 import { runSamAgent } from "@/lib/agents/sam";
+import { resolveCompanyContext } from "@/lib/company/context";
 
 export const runtime = "nodejs";
 
@@ -63,10 +64,16 @@ const toLangChainMessages = (messages: ChatMessage[]): BaseMessage[] => {
 export async function POST(req: Request) {
   const { messages = [] } = (await req.json()) as { messages?: ChatMessage[] };
 
+  // Company context is resolved once, here, from the request - never from the
+  // conversation and never from a tool argument. TEMPORARY: with no auth yet
+  // this returns a fixed development company. See `lib/company/context.ts`.
+  const context = resolveCompanyContext(req);
+
   return createDataStreamResponse({
     async execute(writer) {
       const result = await runSamAgent({
         messages: toLangChainMessages(messages),
+        context,
       });
 
       writer.write(`0:${JSON.stringify(result.text)}\n` as `0:${string}\n`);
