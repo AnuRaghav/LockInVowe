@@ -18,7 +18,7 @@
  */
 
 /** Every provider that can feed the layer. Matches the `source_provider` enum. */
-export type SourceProviderId = "plaid" | "rho";
+export type SourceProviderId = "plaid" | "rho" | "stripe";
 
 /** Which Tier 0 payload shape a raw record holds. */
 export type SourceRecordType = "account" | "transaction";
