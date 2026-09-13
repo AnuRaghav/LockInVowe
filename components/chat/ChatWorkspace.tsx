@@ -148,7 +148,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
 
   useEffect(() => {
     if (firstMessagePhase !== "conversation") return;
-    const timeout = window.setTimeout(() => setFirstMessagePhase(null), 1050);
+    const timeout = window.setTimeout(() => setFirstMessagePhase(null), 550);
     return () => window.clearTimeout(timeout);
   }, [firstMessagePhase]);
 

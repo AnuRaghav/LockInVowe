@@ -163,7 +163,7 @@ export function EmptyConversation({
           energy={0.3}
           points={360}
           className={cn(
-            "h-28 w-28 opacity-100 transition-opacity duration-1000 ease-out motion-reduce:transition-opacity sm:h-32 sm:w-32",
+            "h-28 w-28 opacity-100 transition-opacity duration-500 ease-out motion-reduce:transition-opacity sm:h-32 sm:w-32",
             fadingOut && "opacity-0",
           )}
         />
