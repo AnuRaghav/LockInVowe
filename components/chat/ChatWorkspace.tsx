@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { List } from "@phosphor-icons/react";
 
+import { VoicePlaybackProvider, useVoicePlayback } from "@/components/chat/VoicePlayback";
 import { Composer } from "@/components/chat/Composer";
 import { EmptyConversation, MessageList, type ChatNotice, type RunView } from "@/components/chat/MessageList";
 import { ThreadSidebar, threadLabel } from "@/components/chat/ThreadSidebar";
@@ -71,7 +72,12 @@ const requestNotice = (error: unknown): ChatNotice => {
  * entirely through the backend; nothing about it is assembled, cached, or
  * second-guessed here.
  */
-export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string }) {
+export function ChatWorkspace(props: { initialThreadId?: string }) {
+  return <VoicePlaybackProvider><ChatWorkspaceContent {...props} /></VoicePlaybackProvider>;
+}
+
+function ChatWorkspaceContent({ initialThreadId }: { initialThreadId?: string }) {
+  const { stop: stopPlayback } = useVoicePlayback();
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -172,6 +178,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
 
   const select = (threadId: string) => {
     if (threadId === activeThreadId || run) return;
+    stopPlayback();
     setNotice(null);
     setSummaries({});
     stickToBottom.current = true;
@@ -181,6 +188,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
 
   const startNewThread = async () => {
     if (run) return;
+    stopPlayback();
     setCreating(true);
     setNotice(null);
     try {
@@ -204,6 +212,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
 
   const send = async (content: string) => {
     if (run) return;
+    stopPlayback();
     const controller = new AbortController();
     runAbort.current = controller;
     stopped.current = false;
