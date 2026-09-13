@@ -134,6 +134,15 @@ export const SAM_TOOL_POLICIES: Readonly<Record<string, SamToolPolicy>> = {
         : undefined;
     },
   },
+  create_chart: {
+    // Stores a chart against the turn, so a blind retry would draw it twice.
+    kind: "action",
+    retryable: false,
+    requiresApproval: false,
+    maxCallsPerRun: 2,
+    label: "Drawing a chart",
+    summarize: () => "Chart ready",
+  },
 };
 
 export type SamToolPolicyRegistry = Readonly<Record<string, SamToolPolicy>>;

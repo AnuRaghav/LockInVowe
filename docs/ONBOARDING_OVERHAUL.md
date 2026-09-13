@@ -178,7 +178,17 @@ Edits are written as `corrected` revisions, not `revised`, because the
 company didn't change; the model got it wrong.
 
 Onboarding then runs base, conservative, and aggressive forecasts and shows the
-headline result, delivered according to the contract just set.
+headline result, delivered according to the contract just set. (This lands in
+Phase 4, once the planning engine reads what onboarding collects.)
+
+### Skipping the questions
+
+A founder can skip the interview entirely (from the Connect step) or skip the
+rest of it partway through. Nothing already said is lost: any section with
+conversation that hasn't been consolidated is consolidated then, finished or
+not. Every unanswered question becomes a deferred open item for Sam to raise in
+conversation when it matters (Phase 5). Skipping isn't declining, so personal
+questions are deferred too, and the opt-in still applies when Sam reaches them.
 
 ## Architecture
 
@@ -193,16 +203,34 @@ harness, not a separate agent framework.
   was just said. It does not follow a fixed script.
 - **Time budget.** The checklist marks required vs. deferrable items. Past about
   8 minutes, Sam wraps up remaining required items and defers the rest.
+- **Sections.** Six, in order: company basics, company position, company
+  plans, founder working style, founder values, personal. Smaller sections
+  keep each consolidation step to a few topics.
 - **Tools:**
-  - `record_assumption`: validated writes to known assumption keys only.
-  - `record_founder_preference`: validated writes to the contract.
-  - `defer_question` / `mark_declined`.
-  - `complete_section`: triggers extraction for that section.
+  - `record_assumption`: validated writes to the assumption keys onboarding
+    may set. Never cash, payroll, or the team, which come from connected data.
+  - `record_company_profile`: the company's name and description.
+  - `record_founder_preference`: validated writes to the contract. Only
+    `detail` and `financeFluency` may be inferred.
+  - `mark_question`: answered, deferred, unsure, declined, or not applicable.
+    Personal questions cannot be marked answered before the opt-in.
+  - `complete_section`: closes the current section once its core questions
+    are resolved. Consolidation runs after the turn, not inside the tool.
 - **Extraction.** On `complete_section`, the section transcript goes to
   `updateSemanticState` with `source: "onboarding"`, and founder sections go to
   a founder-block proposer. The updater needs an onboarding prompt variant: its
   "most interactions change nothing" restraint is wrong when every answer is
   meant as baseline.
+- **Personal answers** are consolidated during the turn they are given, from
+  the in-memory text, into personal founder blocks only. The transcript then
+  stores a redacted placeholder for both the founder's answer and Sam's reply.
+- **A turn commits or it doesn't.** Tool writes are staged during a turn
+  (`lib/onboarding/turn-buffer.ts`) and saved only when the run completes, so a
+  turn that runs out of budget cannot leave questions marked answered that the
+  founder never saw discussed. Sam's reply is assembled from all the text it
+  wrote during the turn, not only its final message.
+- **No skipping ahead.** A question can only be marked answered if its section
+  was complete or current when the turn began.
 - **Resumable.** `onboarding_sessions` stores the transcript (minus the
   sensitive section), checklist state, deferrals and declines. Leaving and
   returning picks up where the founder left off.
@@ -247,15 +275,21 @@ All tables follow the existing pattern: RLS on, service role only.
    founder stores (`lib/founder/`), onboarding session store
    (`lib/onboarding/sessions.ts`), new validated assumption keys. Integration
    tests for scope isolation and sensitive-block rules.
-2. **Interview engine.** Checklist definitions, onboarding prompt, tools,
-   section extraction, onboarding updater variant. Tested against scripted
-   founder transcripts, including one that declines every sensitive question.
-3. **UI.** Replace the Model step in `app/onboarding/page.tsx` with the chat
-   interview and inline widgets (currency input, team/hires table from Gusto,
-   choice chips for preference and scenario questions), then playback and
-   forecasts.
+2. **Interview engine.** *(Built.)* Checklist definitions
+   (`lib/onboarding/checklist.ts`), onboarding prompt, tools, section and
+   personal-answer extraction, onboarding updater variant, and
+   `runOnboardingTurn`. Tested against scripted founder transcripts, including
+   one that declines every sensitive question.
+3. **UI.** *(Built.)* The Model step in `app/onboarding/page.tsx` is replaced
+   by the chat interview (`components/onboarding/InterviewStep.tsx`), with
+   quick replies Sam offers via `present_choices` and a team/hires table.
+   Playback (`PlaybackStep.tsx`) records every fix as a `corrected` revision,
+   then `/api/onboarding/complete` finishes the session. Forecasts moved to
+   Phase 4: they need the planning engine to read the new keys first, and the
+   conservative and aggressive cases need defined rules.
 4. **Sam integration.** Context builder, contract-driven prompt, brief changes,
-   planning reads new keys. Persona evals: the same below-floor runway result
+   planning reads new keys, and base, conservative, and aggressive forecasts
+   at the end of onboarding. Persona evals: the same below-floor runway result
    for a "lead with it" founder and a "news with options" founder. Delivery
    must differ; the facts and the timing of the warning must not.
 5. **After onboarding.** Deferred questions surface in chat when relevant; the

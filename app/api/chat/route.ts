@@ -3,7 +3,7 @@ import { createDataStreamResponse, type JSONValue } from "ai";
 
 import { streamSamAgent, type SamRunEvent, type SamRunOutcome } from "@/lib/agents/sam";
 import { resolveCompanyContext, UnauthenticatedError } from "@/lib/company/context";
-import { ConversationError, createConversationStore, type Message, type Run } from "@/lib/conversations/store";
+import { ConversationError, createConversationStore, threadNameFromMessage, type Message, type Run } from "@/lib/conversations/store";
 
 export const runtime = "nodejs";
 
@@ -86,6 +86,11 @@ export async function POST(req: Request) {
     run = activeRun;
     const conversation = await store.load(company.companyId, activeRun.threadId);
     if (!conversation) throw new Error("Newly-created conversation could not be loaded");
+    if (!conversation.thread.name) {
+      // A title from the first message; a naming failure never blocks the answer.
+      await store.nameThreadIfUnnamed(company.companyId, activeRun.threadId, threadNameFromMessage(content))
+        .catch((error) => console.error("thread naming failed", error));
+    }
 
     const response = await createDataStreamResponse({
       async execute(writer) {

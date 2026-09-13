@@ -9,6 +9,54 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      conversation_charts: {
+        Row: {
+          chart_type: string
+          company_id: string
+          created_at: string
+          id: string
+          run_id: string
+          spec: Json
+          thread_id: string
+          title: string
+        }
+        Insert: {
+          chart_type: string
+          company_id: string
+          created_at?: string
+          id?: string
+          run_id: string
+          spec: Json
+          thread_id: string
+          title: string
+        }
+        Update: {
+          chart_type?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          run_id?: string
+          spec?: Json
+          thread_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_charts_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_charts_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       companies: {
         Row: {
           created_at: string

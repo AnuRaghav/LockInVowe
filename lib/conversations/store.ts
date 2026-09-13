@@ -36,7 +36,34 @@ export interface ConversationStore {
   begin(companyId: string, content: string, threadId?: string): Promise<Run>;
   load(companyId: string, threadId: string): Promise<Conversation | null>;
   finish(companyId: string, runId: string, status: TerminalStatus, content?: string): Promise<void>;
+  renameThread(companyId: string, threadId: string, name: string): Promise<Thread>;
+  /** Names a thread only if it has none yet, so a founder's own name is never overwritten. */
+  nameThreadIfUnnamed(companyId: string, threadId: string, name: string): Promise<void>;
+  deleteThread(companyId: string, threadId: string): Promise<void>;
 }
+
+const MAX_THREAD_NAME = 80;
+
+/**
+ * A readable title from the founder's first message: its first line or
+ * sentence, cut at a word boundary. Deterministic and free - no model call
+ * sits between a founder and their first answer.
+ */
+export const threadNameFromMessage = (content: string, max = 48): string => {
+  const firstLine = content.trim().split(/\n/)[0].replace(/\s+/g, " ").trim();
+  const sentence = firstLine.match(/^.+?[.?!](?=\s|$)/)?.[0] ?? firstLine;
+  const text = sentence.replace(/[.!]+$/, "");
+  if (text.length <= max) return text.charAt(0).toUpperCase() + text.slice(1);
+  const cut = text.slice(0, max + 1);
+  const atWord = cut.slice(0, cut.lastIndexOf(" ") > max / 2 ? cut.lastIndexOf(" ") : max);
+  return `${atWord.charAt(0).toUpperCase()}${atWord.slice(1).replace(/[,;:\-–—\s]+$/, "")}…`;
+};
+
+export const normalizeThreadName = (name: unknown): string | null => {
+  if (typeof name !== "string") return null;
+  const trimmed = name.replace(/\s+/g, " ").trim();
+  return trimmed ? trimmed.slice(0, MAX_THREAD_NAME) : null;
+};
 
 const checkError = (error: { code?: string; message: string } | null) => {
   if (!error) return;
@@ -103,6 +130,31 @@ export function createConversationStore(db = createServiceClient()): Conversatio
         p_company_id: companyId, p_run_id: runId, p_status: status, p_content: content,
       });
       checkError(error);
+    },
+    async renameThread(companyId, threadId, name) {
+      const { data, error } = await db.from("conversation_threads")
+        .update({ name }).eq("id", threadId).eq("company_id", companyId)
+        .select("id, name, created_at").maybeSingle();
+      checkError(error);
+      if (!data) throw new ConversationError("Thread not found", 404);
+      return threadSchema.parse(data);
+    },
+    async nameThreadIfUnnamed(companyId, threadId, name) {
+      const { error } = await db.from("conversation_threads")
+        .update({ name }).eq("id", threadId).eq("company_id", companyId).is("name", null);
+      checkError(error);
+    },
+    async deleteThread(companyId, threadId) {
+      const { data: running, error: runError } = await db.from("conversation_runs")
+        .select("id, conversation_threads!inner(company_id)").eq("thread_id", threadId)
+        .eq("conversation_threads.company_id", companyId).eq("status", "running").limit(1);
+      checkError(runError);
+      if (running?.length) throw new ConversationError("Sam is still working in this conversation", 409);
+      // Messages, runs, and charts go with it (on delete cascade).
+      const { data, error } = await db.from("conversation_threads")
+        .delete().eq("id", threadId).eq("company_id", companyId).select("id");
+      checkError(error);
+      if (!data?.length) throw new ConversationError("Thread not found", 404);
     },
   };
 }

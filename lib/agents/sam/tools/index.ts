@@ -4,6 +4,7 @@ import { getCompanyPlanTool } from "@/lib/agents/sam/tools/company";
 import { financialPositionTool, financialCashFlowTool, financialBurnRunwayTool,
   financialComparisonTool, financialTraceTool, forecastCashTool,
   simulateFinancialScenarioTool, compareFinancialScenariosTool } from "@/lib/agents/sam/tools/financial";
+import { createChartTool } from "@/lib/agents/sam/tools/charts";
 import {
   getMemoryHistoryTool,
   getMemoryTool,
@@ -35,6 +36,7 @@ export const SAM_TOOLS: ClientTool[] = [
   getMemoryTool,
   getMemoryHistoryTool,
   getCompanyPlanTool,
+  createChartTool,
 ];
 
 export {
@@ -45,4 +47,5 @@ export {
   getMemoryHistoryTool,
   getMemoryTool,
   searchMemoryTool,
+  createChartTool,
 };

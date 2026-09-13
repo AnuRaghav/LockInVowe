@@ -1,48 +1,11 @@
 import { resolveCompanyContext } from "@/lib/company/context";
 import {
-  ASSUMPTION_KEYS,
-  deriveCashFromBankAccounts,
-  deriveMonthlyPayrollCostFromGusto,
-  deriveMrrFromStripeRevenue,
-  getCompanyAssumptions,
-  getCurrentTeam,
+  getOnboardingSnapshot,
   isTeamMember,
   saveOnboardingAnswers,
   type OnboardingAnswers,
   type PlannedHire,
 } from "@/lib/company/assumptions";
-import type { SourceProviderId } from "@/lib/source";
-import { createServiceClient } from "@/lib/supabase/service";
-
-/** Whether an active source connection exists for a provider - independent of whether it has produced any data yet. */
-const hasActiveConnection = async (
-  companyId: string,
-  provider: SourceProviderId
-): Promise<boolean> => {
-  const supabase = createServiceClient();
-  const { count, error } = await supabase
-    .from("source_connections")
-    .select("id", { count: "exact", head: true })
-    .eq("company_id", companyId)
-    .eq("provider", provider)
-    .eq("status", "active");
-
-  if (error) throw error;
-  return (count ?? 0) > 0;
-};
-
-/** Gusto lives outside the Source Layer, so its connection has its own table. */
-const hasActivePayrollConnection = async (companyId: string): Promise<boolean> => {
-  const supabase = createServiceClient();
-  const { count, error } = await supabase
-    .from("payroll_connections")
-    .select("id", { count: "exact", head: true })
-    .eq("company_id", companyId)
-    .eq("status", "active");
-
-  if (error) throw error;
-  return (count ?? 0) > 0;
-};
 
 /** Current onboarding state: derived cash/payroll/revenue plus whatever has been saved so far. */
 export async function GET(req: Request) {
@@ -53,40 +16,7 @@ export async function GET(req: Request) {
     return Response.json({ error: "Sign in required." }, { status: 401 });
   }
 
-  const [
-    cashOnHandUsd,
-    monthlyPayrollCostUsd,
-    mrrUsd,
-    stripeConnected,
-    payrollConnected,
-    currentTeam,
-    assumptions,
-  ] = await Promise.all([
-    deriveCashFromBankAccounts(companyId),
-    deriveMonthlyPayrollCostFromGusto(companyId),
-    deriveMrrFromStripeRevenue(companyId),
-    hasActiveConnection(companyId, "stripe"),
-    hasActivePayrollConnection(companyId),
-    getCurrentTeam(companyId),
-    getCompanyAssumptions(companyId),
-  ]);
-
-  return Response.json({
-    cashOnHandUsd: cashOnHandUsd ?? assumptions[ASSUMPTION_KEYS.cashOnHandUsd] ?? null,
-    monthlyPayrollCostUsd:
-      monthlyPayrollCostUsd ?? assumptions[ASSUMPTION_KEYS.monthlyPayrollCostUsd] ?? null,
-    // `mrrUsd` is a proxy derived from the last 30 days of Stripe activity, so
-    // it can legitimately come back 0 for a connected account with no charges
-    // yet - `stripeConnected` is what the UI shows a "Connected" badge from.
-    mrrUsd: mrrUsd ?? assumptions[ASSUMPTION_KEYS.mrrUsd] ?? null,
-    stripeConnected,
-    payrollConnected,
-    // Founder-edited team if saved, else Gusto's active employees; null when
-    // payroll isn't connected. `source` tells the UI which one it's showing.
-    currentTeam: currentTeam?.team ?? null,
-    currentTeamSource: currentTeam?.source ?? null,
-    assumptions,
-  });
+  return Response.json(await getOnboardingSnapshot(companyId));
 }
 
 const isPlannedHire = (value: unknown): value is PlannedHire =>
