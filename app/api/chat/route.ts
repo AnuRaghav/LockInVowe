@@ -62,12 +62,22 @@ const toLangChainMessages = (messages: ChatMessage[]): BaseMessage[] => {
 };
 
 export async function POST(req: Request) {
-  const { messages = [] } = (await req.json()) as { messages?: ChatMessage[] };
+  const { messages = [], threadId } = (await req.json()) as {
+    messages?: ChatMessage[];
+    threadId?: string;
+  };
 
   // Company context is resolved once, here, from the request - never from the
   // conversation and never from a tool argument. TEMPORARY: with no auth yet
   // this returns a fixed development company. See `lib/company/context.ts`.
-  const context = resolveCompanyContext(req);
+  //
+  // `threadId` scopes working memory to this conversation. Long-lived company
+  // knowledge is *not* scoped by it: it is reached through the memory module,
+  // which is why a fact learned in one thread is available in the next.
+  const context = {
+    ...resolveCompanyContext(req),
+    threadId: typeof threadId === "string" && threadId.trim() ? threadId.trim() : undefined,
+  };
 
   return createDataStreamResponse({
     async execute(writer) {

@@ -7,8 +7,11 @@
  *    computes it. Tools are thin adapters between the two. Never put a formula
  *    in a prompt.
  * 2. The LLM decides *which tool* to call; the application decides *which
- *    company* it runs against. Company identity travels in {@link SamContext},
- *    never in a tool's argument schema.
+ *    company* it runs against. Company identity travels in
+ *    {@link SamRuntimeContext}, never in a tool's argument schema.
+ * 3. The LLM does not decide what it knows. The {@link SamContextBuilder}
+ *    assembles the model context from the memory modules; Sam reaches for
+ *    anything else through the retrieval tools mid-loop.
  */
 export {
   createSamAgent,
@@ -31,14 +34,34 @@ export {
 
 export {
   MissingSamContextError,
+  memoryScope,
   requireSamContext,
   samContextSchema,
+  samRuntimeContextSchema,
   type SamContext,
+  type SamRuntimeContext,
 } from "@/lib/agents/sam/context";
 
-export { SAM_SYSTEM_PROMPT } from "@/lib/agents/sam/prompt";
+export {
+  createSamContextBuilder,
+  type CreateSamContextBuilderOptions,
+  type SamContextBuilder,
+  type SamContextRequest,
+  type SamInitialContext,
+} from "@/lib/agents/sam/context-builder";
+
+export {
+  SAM_SYSTEM_PROMPT,
+  buildSamSystemPrompt,
+  formatSamContext,
+} from "@/lib/agents/sam/prompt";
 export { samAnswerSchema, type SamAnswer, type SamToolCall } from "@/lib/agents/sam/schemas";
-export { SAM_TOOLS, calculateRunwayTool } from "@/lib/agents/sam/tools";
+export {
+  SAM_TOOLS,
+  calculateRunwayTool,
+  getMemoryTool,
+  searchMemoryTool,
+} from "@/lib/agents/sam/tools";
 export {
   runTool,
   toolFailure,

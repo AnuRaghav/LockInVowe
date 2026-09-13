@@ -7,8 +7,26 @@ const createSamModel = vi.fn();
 vi.mock("@/lib/agents/sam/model", () => ({ createSamModel }));
 
 const { runSamAgent } = await import("@/lib/agents/sam/agent");
+const { createSamContextBuilder } = await import("@/lib/agents/sam/context-builder");
+const { createSeededPersistentMemory } = await import("@/lib/memory/seed");
+const { InMemoryThreadMemory } = await import("@/lib/memory/in-memory");
 
-const TEST_CONTEXT = { companyId: "company_test_1" };
+const COMPANY_ID = "company_test_1";
+const TEST_CONTEXT = { companyId: COMPANY_ID };
+
+/** A run wired to seeded company memory, as the application wires it in production. */
+const withMemory = (overrides: { maxMemories?: number; threadId?: string } = {}) => {
+  const persistentMemory = createSeededPersistentMemory(COMPANY_ID);
+
+  return {
+    context: { companyId: COMPANY_ID, threadId: overrides.threadId, persistentMemory },
+    contextBuilder: createSamContextBuilder({
+      persistentMemory,
+      threadMemory: new InMemoryThreadMemory(),
+      maxMemories: overrides.maxMemories,
+    }),
+  };
+};
 
 const runwayCall = {
   name: "calculate_runway",
@@ -97,5 +115,78 @@ describe("runSamAgent", () => {
 
     expect(result.toolCalls).toEqual([]);
     expect(result.text).toEqual(expect.any(String));
+  });
+
+  it("opens the run with company memory the founder never mentioned", async () => {
+    createSamModel.mockReturnValue(new FakeToolCallingModel({ toolCalls: [[]] }));
+
+    const result = await runSamAgent({
+      messages: "Should we hire a senior engineer?",
+      ...withMemory(),
+    });
+
+    // The context builder selected it...
+    expect(result.initialContext.memories.map((memory) => memory.id)).toContain(
+      "mem_runway_floor"
+    );
+    // ...and it reached the model. (The fake echoes every message it was sent.)
+    expect(result.text).toContain("at least 12 months of runway");
+  });
+
+  it("discovers memory mid-loop that the initial context did not include", async () => {
+    const searchCall = {
+      name: "search_memory",
+      args: { query: "fundraising plans" },
+      id: "call_memory_1",
+    };
+    createSamModel.mockReturnValue(
+      new FakeToolCallingModel({ toolCalls: [[searchCall], []] })
+    );
+
+    const result = await runSamAgent({
+      messages: "How much cash do we need to get to our next milestone?",
+      // Only one memory up front, so the raise plan is genuinely not in context.
+      ...withMemory({ maxMemories: 1 }),
+    });
+
+    expect(result.initialContext.memories.map((memory) => memory.id)).not.toContain(
+      "mem_raise_march"
+    );
+    expect(result.toolCalls).toEqual([{ name: searchCall.name, args: searchCall.args }]);
+
+    const payload = toolPayload(result.messages) as {
+      ok: boolean;
+      data?: { memories?: Array<{ id: string; content: string }> };
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.data?.memories?.[0]).toMatchObject({
+      id: "mem_raise_march",
+      content: expect.stringContaining("March"),
+    });
+  });
+
+  it("reaches the same company knowledge from a different thread", async () => {
+    const searchCall = {
+      name: "search_memory",
+      args: { query: "when are we raising" },
+      id: "call_memory_2",
+    };
+
+    const idsFor = async (threadId: string) => {
+      createSamModel.mockReturnValue(
+        new FakeToolCallingModel({ toolCalls: [[searchCall], []] })
+      );
+      const result = await runSamAgent({
+        messages: "Remind me what the plan is.",
+        ...withMemory({ threadId }),
+      });
+      const payload = toolPayload(result.messages) as {
+        data?: { memories?: Array<{ id: string }> };
+      };
+      return payload.data?.memories?.map((memory) => memory.id) ?? [];
+    };
+
+    expect(await idsFor("thread_a")).toContain("mem_raise_march");
+    expect(await idsFor("thread_b")).toContain("mem_raise_march");
   });
 });
