@@ -33,3 +33,18 @@ export {
   type OnboardingTurnResult,
 } from "@/lib/onboarding/interview";
 export { loadOnboardingFacts, type OnboardingFacts } from "@/lib/onboarding/facts";
+export * from "@/lib/onboarding/choices";
+export * from "@/lib/onboarding/state";
+export {
+  OnboardingNotReadyError,
+  PlaybackCorrectionError,
+  completeOnboarding,
+  correctPlayback,
+  loadOnboardingPlayback,
+  playbackCorrectionSchema,
+  type CompletedOnboarding,
+  type OnboardingPlayback,
+  type PlaybackCorrection,
+  type PlaybackDeps,
+  type PlaybackTopic,
+} from "@/lib/onboarding/playback";

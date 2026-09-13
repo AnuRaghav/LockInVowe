@@ -29,6 +29,7 @@ import {
   sectionEntryKey,
   unresolvedCoreQuestions,
 } from "@/lib/onboarding/checklist";
+import { CHOICE_QUESTION_IDS, ONBOARDING_CHOICES } from "@/lib/onboarding/choices";
 import type { OnboardingOpenItem } from "@/lib/onboarding/sessions";
 
 /**
@@ -331,17 +332,35 @@ export const completeSectionTool = tool(
   }
 );
 
+const PRESENT_CHOICES = "present_choices";
+
+export const presentChoicesTool = tool(
+  async (input, runtime: Runtime) =>
+    runTool(async () => {
+      await onboardingRun(runtime, PRESENT_CHOICES);
+      return { presented: input.questionId, options: ONBOARDING_CHOICES[input.questionId] };
+    }),
+  {
+    name: PRESENT_CHOICES,
+    description:
+      "Show the founder quick-reply options for the question you are asking in this reply. Only for these questions, and only alongside asking it. The founder can still answer in their own words.",
+    schema: z.object({ questionId: z.enum(CHOICE_QUESTION_IDS) }).strict(),
+  }
+);
+
 export const ONBOARDING_TOOLS: ClientTool[] = [
   recordAssumptionTool,
   recordCompanyProfileTool,
   recordFounderPreferenceTool,
   markQuestionTool,
   completeSectionTool,
+  presentChoicesTool,
 ];
 
 /**
- * Every onboarding tool changes state, so none is retried by the harness. None
- * needs approval: the founder is the one giving the answers being saved.
+ * Every tool that saves an answer changes state, so none of those is retried by
+ * the harness; `present_choices` only shows options. None needs approval: the
+ * founder is the one giving the answers being saved.
  */
 export const ONBOARDING_TOOL_POLICIES: SamToolPolicyRegistry = {
   [RECORD_ASSUMPTION]: { kind: "action", retryable: false, requiresApproval: false, label: "Saving a company assumption" },
@@ -349,4 +368,5 @@ export const ONBOARDING_TOOL_POLICIES: SamToolPolicyRegistry = {
   [RECORD_FOUNDER_PREFERENCE]: { kind: "action", retryable: false, requiresApproval: false, label: "Saving how you like to work" },
   [MARK_QUESTION]: { kind: "action", retryable: false, requiresApproval: false, label: "Updating onboarding progress" },
   [COMPLETE_SECTION]: { kind: "action", retryable: false, requiresApproval: false, label: "Finishing an onboarding section" },
+  [PRESENT_CHOICES]: { kind: "read_only", retryable: true, requiresApproval: false, label: "Offering answer options" },
 };

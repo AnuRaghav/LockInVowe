@@ -459,6 +459,24 @@ export const deriveMrrFromStripeRevenue = async (
   return mrrUsd;
 };
 
+/**
+ * Saves the team and planned hires from the onboarding table. The team, once
+ * saved, is the payroll figure: edits to it are corrections to Gusto.
+ */
+export const saveTeamAndHires = async (
+  companyId: string,
+  team: TeamMember[],
+  hires: PlannedHire[]
+): Promise<void> => {
+  await Promise.all([
+    setCompanyAssumption(companyId, ASSUMPTION_KEYS.currentTeam, team),
+    setCompanyAssumption(companyId, ASSUMPTION_KEYS.plannedHires, hires),
+    ...(team.length > 0
+      ? [setCompanyAssumption(companyId, ASSUMPTION_KEYS.monthlyPayrollCostUsd, sumMonthlyCost(team))]
+      : []),
+  ]);
+};
+
 /** Saves the founder-entered onboarding answers as structured assumptions. */
 export const saveOnboardingAnswers = async (
   companyId: string,

@@ -11,6 +11,7 @@ import { loadFinancialSnapshot } from "@/lib/finance/sam-surface";
 import type { CommunicationContractStore } from "@/lib/founder/contract";
 import { createCommunicationContractStore } from "@/lib/founder/store";
 import type { OnboardingCapability } from "@/lib/onboarding/capability";
+import { ONBOARDING_CHOICES, isChoiceQuestionId, type ChoiceQuestionId } from "@/lib/onboarding/choices";
 import {
   ONBOARDING_SECTIONS,
   activeInterviewSeconds,
@@ -93,6 +94,8 @@ export interface OnboardingTurnResult {
   extractions: ExtractionResult[];
   /** Present when this turn carried a personal answer. */
   personalExtraction?: ExtractionResult;
+  /** Quick replies Sam offered for the question it just asked. */
+  choices: { questionId: ChoiceQuestionId; options: readonly string[] } | null;
 }
 
 export const ONBOARDING_OPENING_MARKER =
@@ -185,7 +188,7 @@ export const runOnboardingTurn = async (input: OnboardingTurnInput): Promise<Onb
   };
 
   // A failed turn stores nothing, so the founder can simply say it again.
-  if (!run.ok) return { ...result, reply: "", extractions: [] };
+  if (!run.ok) return { ...result, reply: "", extractions: [], choices: null };
 
   let personalExtraction: ExtractionResult | undefined;
   if (message && startSection?.sensitive) {
@@ -242,5 +245,12 @@ export const runOnboardingTurn = async (input: OnboardingTurnInput): Promise<Onb
     });
   }
 
-  return { ...result, reply: run.text, extractions, personalExtraction };
+  const offered = [...run.toolCalls].reverse().find((call) => call.name === "present_choices");
+  const offeredId = (offered?.args as { questionId?: unknown } | undefined)?.questionId;
+  const choices =
+    typeof offeredId === "string" && isChoiceQuestionId(offeredId)
+      ? { questionId: offeredId, options: ONBOARDING_CHOICES[offeredId] }
+      : null;
+
+  return { ...result, reply: run.text, extractions, personalExtraction, choices };
 };
