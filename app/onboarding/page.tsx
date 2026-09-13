@@ -7,6 +7,7 @@ import { ArrowClockwise, ArrowLeft, Bank, Check, CreditCard, Plus, Users, X } fr
 import { GustoLinkButton } from "@/components/GustoLinkButton";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
 import { SamOrb } from "@/components/SamOrb";
+import { SamLogo } from "@/components/SamLogo";
 import { StripeLinkButton } from "@/components/StripeLinkButton";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
@@ -281,9 +282,8 @@ export default function OnboardingPage() {
   return (
     <div className="relative flex flex-1 flex-col">
       <header className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between gap-4 px-5">
-        <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-foreground">
-          <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-accent" />
-          Sam
+        <Link href="/" aria-label="Sam home" className="inline-flex shrink-0 items-center">
+          <SamLogo />
         </Link>
         <ol aria-label="Onboarding progress" className="glass-pill flex items-center gap-1 rounded-full p-1">
           {STEPS.map((s, i) => (
