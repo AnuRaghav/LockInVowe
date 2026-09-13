@@ -94,15 +94,17 @@ export function MessageList({
   run,
   notice,
   interruptedSteps = [],
+  className,
 }: {
   messages: ChatMessage[];
   traces: Record<string, ActivityStep[]>;
   run: RunView | null;
   notice: ChatNotice | null;
   interruptedSteps?: ActivityStep[];
+  className?: string;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-8 px-5 py-10 sm:px-6">
+    <div className={cn("mx-auto flex w-full max-w-[46rem] flex-col gap-8 px-5 py-10 sm:px-6", className)}>
       {messages.map((message) =>
         message.role === "user" ? (
           <UserTurn key={message.id} content={message.content} />
@@ -140,21 +142,40 @@ const STARTERS = [
 ];
 
 /** Shown for a brand-new thread, and for `/chat` before anything is selected. */
+export type EmptyConversationPhase = "idle" | "activating" | "working" | "conversation";
+
 export function EmptyConversation({
   onAsk,
   disabled = false,
+  phase = "idle",
 }: {
   onAsk?: (question: string) => void;
   disabled?: boolean;
+  phase?: EmptyConversationPhase;
 }) {
+  const transitioning = phase !== "idle";
+  const fadingOut = phase === "conversation";
+  const active = phase === "activating" || phase === "working";
+
   return (
-    <div className="relative isolate mx-auto flex w-full max-w-[64rem] flex-1 flex-col items-center justify-center gap-7 overflow-hidden px-5 py-16 text-center sm:px-6">
+    <div className={cn(
+      "relative isolate mx-auto flex w-full max-w-[64rem] flex-1 flex-col items-center justify-center gap-7 overflow-hidden px-5 py-16 text-center sm:px-6",
+      transitioning && "pointer-events-none absolute inset-0 max-w-none",
+    )}>
       <SamOrb
-        energy={0.28}
+        energy={phase === "activating" ? 0.88 : phase === "working" ? 0.68 : 0.28}
         points={760}
-        className="pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-square w-[min(82vw,34rem)] -translate-x-1/2 -translate-y-1/2 opacity-45 [mask-image:radial-gradient(circle,black_42%,transparent_78%)]"
+        className={cn(
+          "pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-square w-[min(82vw,34rem)] -translate-x-1/2 -translate-y-1/2 [mask-image:radial-gradient(circle,black_42%,transparent_78%)] motion-reduce:transition-opacity",
+          active && "sam-first-orb-active opacity-70 transition-[opacity,transform] duration-700 ease-out",
+          fadingOut && "scale-95 opacity-0 transition-[opacity,transform] duration-500 ease-out",
+          !transitioning && "opacity-45 transition-opacity duration-500",
+        )}
       />
-      <div className="relative z-10 flex flex-col gap-2">
+      <div className={cn(
+        "relative z-10 flex flex-col gap-2 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-opacity",
+        transitioning && "translate-y-1 scale-[0.98] opacity-0",
+      )}>
         <h2 className="text-balance text-2xl font-semibold tracking-tight text-foreground">
           Ask Sam.
         </h2>
@@ -164,7 +185,10 @@ export function EmptyConversation({
         </p>
       </div>
       {onAsk && (
-        <ul className="relative z-10 flex flex-col items-center gap-2">
+        <ul className={cn(
+          "relative z-10 flex flex-col items-center gap-2 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-opacity",
+          transitioning && "translate-y-1 scale-[0.98] opacity-0",
+        )}>
           {STARTERS.map((question) => (
             <li key={question}>
               <button

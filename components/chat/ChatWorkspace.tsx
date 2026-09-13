@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { List, SidebarSimple } from "@phosphor-icons/react";
 
 import { Composer } from "@/components/chat/Composer";
-import { EmptyConversation, MessageList, type ChatNotice, type RunView } from "@/components/chat/MessageList";
+import { EmptyConversation, MessageList, type ChatNotice, type EmptyConversationPhase, type RunView } from "@/components/chat/MessageList";
 import { ThreadSidebar, threadLabel } from "@/components/chat/ThreadSidebar";
 import { applyActivityEvent, finishActivity, type ActivityStep } from "@/lib/chat/activity";
 import {
@@ -128,6 +128,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
   /** Safe tool traces for answers produced in this session, by message id. */
   const [traces, setTraces] = useState<Record<string, ActivityStep[]>>({});
   const [interruptedSteps, setInterruptedSteps] = useState<ActivityStep[]>([]);
+  const [firstMessagePhase, setFirstMessagePhase] = useState<EmptyConversationPhase | null>(null);
 
   const runAbort = useRef<AbortController | null>(null);
   /** The thread a live run owns; its own reconciliation reads it, not the loader. */
@@ -144,6 +145,16 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
       runAbort.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (firstMessagePhase !== "conversation") return;
+    const timeout = window.setTimeout(() => setFirstMessagePhase(null), 520);
+    return () => window.clearTimeout(timeout);
+  }, [firstMessagePhase]);
+
+  const finishFirstMessagePresence = () => {
+    setFirstMessagePhase((phase) => phase && phase !== "conversation" ? "conversation" : phase);
+  };
 
 
   const toggleSidebarCollapsed = () => writeCollapsed(!sidebarCollapsed);
@@ -293,6 +304,9 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
 
   const send = async (content: string) => {
     if (run || runAbort.current) return;
+    const firstMessageInThread = messages.length === 0 && !run && !messagesLoading;
+    if (firstMessageInThread) setFirstMessagePhase("activating");
+
     const controller = new AbortController();
     runAbort.current = controller;
     stopped.current = false;
@@ -328,19 +342,23 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
             if (event.threadId !== activeThreadId) setActiveThreadId(event.threadId);
             break;
           case "run_started":
+            if (firstMessageInThread) setFirstMessagePhase("working");
             setRun((current) => (current ? { ...current, phase: "working" } : current));
             break;
           case "activity":
+            if (firstMessageInThread) finishFirstMessagePresence();
             steps = applyActivityEvent(steps, event.activity);
             setRun((current) => (current ? { ...current, steps } : current));
             break;
           case "delta":
             if (outcome === "terminated") break;
+            if (event.text.trim() && firstMessageInThread) finishFirstMessagePresence();
             answer += event.text;
             setRun((current) => (current ? { ...current, text: answer } : current));
             break;
           case "run_completed":
             outcome = "completed";
+            if (firstMessageInThread) finishFirstMessagePresence();
             setRun((current) => (current ? { ...current, phase: "settling", steps: finishActivity(steps) } : current));
             break;
           case "run_terminated":
@@ -348,6 +366,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
             // streams after this frame is not one either - drop what streamed
             // and let the notice say what happened.
             outcome = "terminated";
+            if (firstMessageInThread) finishFirstMessagePresence();
             terminal = terminationNotice(event.outcome);
             answer = "";
             setRun((current) => (current ? { ...current, phase: "settling", steps: finishActivity(steps), text: "" } : current));
@@ -363,6 +382,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
       }
       answer = outcome === "completed" ? answer : "";
       setRun((current) => (current ? { ...current, phase: "settling", text: "" } : current));
+      if (firstMessageInThread) finishFirstMessagePresence();
     }
 
     if (!outcome && !terminal) {
@@ -370,6 +390,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
       terminal = terminationNotice("failed");
       answer = "";
       setRun((current) => (current ? { ...current, phase: "settling", text: "" } : current));
+      if (firstMessageInThread) finishFirstMessagePresence();
     }
 
     if (!mounted.current) return;
@@ -471,16 +492,32 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
             const node = event.currentTarget;
             stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
           }}
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+          className="relative flex min-h-0 flex-1 flex-col overflow-y-auto"
         >
           {messagesLoading && !run ? (
             <p className="mx-auto w-full max-w-[46rem] px-5 py-10 text-[13px] text-muted-2 sm:px-6">
               Loading conversation…
             </p>
-          ) : hasConversation ? (
-            <MessageList messages={messages} traces={traces} run={run} notice={notice} interruptedSteps={interruptedSteps} />
           ) : (
-            <EmptyConversation onAsk={send} disabled={messagesLoading} />
+            <>
+              {hasConversation && (
+                <MessageList
+                  messages={messages}
+                  traces={traces}
+                  run={run}
+                  notice={notice}
+                  interruptedSteps={interruptedSteps}
+                  className={firstMessagePhase ? "transition-opacity duration-300" : undefined}
+                />
+              )}
+              {(!hasConversation || firstMessagePhase) && (
+                <EmptyConversation
+                  onAsk={send}
+                  disabled={messagesLoading || hasConversation}
+                  phase={firstMessagePhase ?? "idle"}
+                />
+              )}
+            </>
           )}
         </div>
 

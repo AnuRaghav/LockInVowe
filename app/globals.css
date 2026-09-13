@@ -118,6 +118,33 @@
   }
 }
 
+@keyframes sam-first-orb-working {
+  0%, 100% {
+    opacity: 0.58;
+    transform: translate(-50%, -50%) scale(0.985);
+  }
+  37% {
+    opacity: 0.76;
+    transform: translate(-50%, -50%) scale(1.018);
+  }
+  68% {
+    opacity: 0.66;
+    transform: translate(-50%, -50%) scale(1.006);
+  }
+}
+
+@layer components {
+  .sam-first-orb-active {
+    animation: sam-first-orb-working 2.8s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sam-first-orb-active {
+      animation: none;
+    }
+  }
+}
+
 @utility glass-pill {
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.07);
