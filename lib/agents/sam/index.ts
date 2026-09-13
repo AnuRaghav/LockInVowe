@@ -12,6 +12,8 @@
  * 3. The LLM does not decide what it knows. The {@link SamContextBuilder}
  *    assembles the model context from the memory modules; Sam reaches for
  *    anything else through the retrieval tools mid-loop.
+ * 4. The LLM does not decide how long it runs. The harness owns budgets,
+ *    deadlines, retries, and the termination reason. See `harness/`.
  */
 export {
   createSamAgent,
@@ -62,6 +64,17 @@ export {
   getMemoryTool,
   searchMemoryTool,
 } from "@/lib/agents/sam/tools";
+export {
+  DEFAULT_SAM_TOOL_POLICY,
+  SAM_TOOL_POLICIES,
+  retryableToolNames,
+  samToolPolicy,
+  toolCallCeilings,
+  type SamToolKind,
+  type SamToolPolicy,
+  type SamToolPolicyRegistry,
+} from "@/lib/agents/sam/tools/policy";
+export * from "@/lib/agents/sam/harness";
 export {
   runTool,
   toolFailure,

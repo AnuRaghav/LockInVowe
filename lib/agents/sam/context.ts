@@ -42,6 +42,20 @@ export const samRuntimeContextSchema = z.object({
     .describe(
       "Long-lived company knowledge the retrieval tools read. Defaults to the application's memory module."
     ),
+  runId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Unique id for this execution. Set by the harness; a tool that mutates company state should derive its idempotency key from it so a retried attempt is not applied twice."
+    ),
+  requestId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Id of the originating request. Equals runId unless the caller supplied one, so a retried *request* stays traceable to one intent."
+    ),
 });
 
 export type SamRuntimeContext = z.infer<typeof samRuntimeContextSchema>;

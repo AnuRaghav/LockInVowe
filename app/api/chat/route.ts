@@ -1,7 +1,7 @@
 import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from "@langchain/core/messages";
 import { createDataStreamResponse, type JSONValue } from "ai";
 
-import { runSamAgent } from "@/lib/agents/sam";
+import { runSamAgent, type SamRunOutcome } from "@/lib/agents/sam";
 import { resolveCompanyContext } from "@/lib/company/context";
 
 export const runtime = "nodejs";
@@ -61,6 +61,22 @@ const toLangChainMessages = (messages: ChatMessage[]): BaseMessage[] => {
   return langChainMessages;
 };
 
+/** What the founder sees when a run stops without producing an answer. */
+const unfinishedMessage = (outcome: SamRunOutcome): string => {
+  switch (outcome) {
+    case "max_model_calls":
+    case "max_tool_calls":
+    case "no_progress":
+      return "I ran out of room working through that one before I had an answer. Try asking for one piece of it at a time.";
+    case "timeout":
+      return "That took longer than I'm allowed to spend on one question. Try narrowing it and I'll have another go.";
+    case "cancelled":
+      return "Stopped.";
+    default:
+      return "Something broke while I was working on that, so I don't have an answer I trust. Try again in a moment.";
+  }
+};
+
 export async function POST(req: Request) {
   const { messages = [], threadId } = (await req.json()) as {
     messages?: ChatMessage[];
@@ -84,13 +100,22 @@ export async function POST(req: Request) {
       const result = await runSamAgent({
         messages: toLangChainMessages(messages),
         context,
+        // A founder who closes the tab should not keep paying for the run.
+        signal: req.signal,
       });
 
-      writer.write(`0:${JSON.stringify(result.text)}\n` as `0:${string}\n`);
+      // A run that stopped against a budget, a deadline, or a provider failure
+      // has no answer to show. Say so rather than streaming a blank turn that
+      // reads like Sam had nothing to say.
+      const text = result.ok ? result.text : unfinishedMessage(result.outcome);
+      writer.write(`0:${JSON.stringify(text)}\n` as `0:${string}\n`);
 
-      if (result.toolCalls.length > 0) {
-        writer.writeData({ toolCalls: result.toolCalls } as unknown as JSONValue);
-      }
+      writer.writeData({
+        runId: result.run.runId,
+        outcome: result.outcome,
+        degraded: result.degraded,
+        ...(result.toolCalls.length > 0 ? { toolCalls: result.toolCalls } : {}),
+      } as unknown as JSONValue);
     },
   });
 }
