@@ -15,6 +15,7 @@ export const ASSUMPTION_KEYS = {
   monthlyGrowthTargetPct: "monthly_growth_target_pct",
   minimumRunwayMonths: "minimum_runway_months",
   plannedHires: "planned_hires",
+  monthlyPayrollCostUsd: "monthly_payroll_cost_usd",
 } as const;
 
 export type AssumptionKey = (typeof ASSUMPTION_KEYS)[keyof typeof ASSUMPTION_KEYS];
@@ -133,6 +134,38 @@ export const deriveCashFromBankAccounts = async (
 
   await setCompanyAssumption(companyId, ASSUMPTION_KEYS.cashOnHandUsd, cashOnHandUsd, "derived");
   return cashOnHandUsd;
+};
+
+/**
+ * Derives current monthly payroll cost from synced Gusto payroll runs and
+ * stores it as a `derived` assumption. Uses the most recent processed run's
+ * employer cost as a proxy for "this month's payroll" - good enough for the
+ * MVP; a real implementation would annualize or average across runs of
+ * different cadences (weekly/biweekly/monthly).
+ */
+export const deriveMonthlyPayrollCostFromGusto = async (
+  companyId: string
+): Promise<number | null> => {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("payroll_runs")
+    .select("total_employer_cost_usd, check_date")
+    .eq("company_id", companyId)
+    .order("check_date", { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+
+  const monthlyPayrollCostUsd = data[0].total_employer_cost_usd ?? 0;
+
+  await setCompanyAssumption(
+    companyId,
+    ASSUMPTION_KEYS.monthlyPayrollCostUsd,
+    monthlyPayrollCostUsd,
+    "derived"
+  );
+  return monthlyPayrollCostUsd;
 };
 
 /** Saves the founder-entered onboarding answers as structured assumptions. */

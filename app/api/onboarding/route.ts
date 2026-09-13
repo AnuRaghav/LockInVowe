@@ -2,23 +2,27 @@ import { resolveCompanyContext } from "@/lib/company/context";
 import {
   ASSUMPTION_KEYS,
   deriveCashFromBankAccounts,
+  deriveMonthlyPayrollCostFromGusto,
   getCompanyAssumptions,
   saveOnboardingAnswers,
   type OnboardingAnswers,
   type PlannedHire,
 } from "@/lib/company/assumptions";
 
-/** Current onboarding state: derived cash plus whatever has been saved so far. */
+/** Current onboarding state: derived cash/payroll plus whatever has been saved so far. */
 export async function GET(req: Request) {
   const { companyId } = resolveCompanyContext(req);
 
-  const [cashOnHandUsd, assumptions] = await Promise.all([
+  const [cashOnHandUsd, monthlyPayrollCostUsd, assumptions] = await Promise.all([
     deriveCashFromBankAccounts(companyId),
+    deriveMonthlyPayrollCostFromGusto(companyId),
     getCompanyAssumptions(companyId),
   ]);
 
   return Response.json({
     cashOnHandUsd: cashOnHandUsd ?? assumptions[ASSUMPTION_KEYS.cashOnHandUsd] ?? null,
+    monthlyPayrollCostUsd:
+      monthlyPayrollCostUsd ?? assumptions[ASSUMPTION_KEYS.monthlyPayrollCostUsd] ?? null,
     assumptions,
   });
 }
