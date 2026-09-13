@@ -9,6 +9,104 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      conversation_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          position: number
+          role: string
+          thread_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          position?: never
+          role: string
+          thread_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          position?: never
+          role?: string
+          thread_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_runs: {
+        Row: {
+          finished_at: string | null
+          id: string
+          started_at: string
+          status: string
+          thread_id: string
+          user_message_id: string
+        }
+        Insert: {
+          finished_at?: string | null
+          id?: string
+          started_at?: string
+          status?: string
+          thread_id: string
+          user_message_id: string
+        }
+        Update: {
+          finished_at?: string | null
+          id?: string
+          started_at?: string
+          status?: string
+          thread_id?: string
+          user_message_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_runs_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_threads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_runs_thread_id_user_message_id_fkey"
+            columns: ["thread_id", "user_message_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_messages"
+            referencedColumns: ["thread_id", "id"]
+          },
+        ]
+      }
+      conversation_threads: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          name: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          name?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          name?: string | null
+        }
+        Relationships: []
+      }
       companies: {
         Row: {
           created_at: string
@@ -846,6 +944,32 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      conversation_begin: {
+        Args: { p_company_id: string; p_content: string; p_thread_id?: string }
+        Returns: {
+          finished_at: string | null
+          id: string
+          started_at: string
+          status: string
+          thread_id: string
+          user_message_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "conversation_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      conversation_finish: {
+        Args: {
+          p_company_id: string
+          p_content?: string
+          p_run_id: string
+          p_status: string
+        }
+        Returns: undefined
+      }
       semantic_block_document: {
         Args: {
           p_body: string
