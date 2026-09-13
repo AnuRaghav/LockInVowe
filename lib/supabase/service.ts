@@ -1,16 +1,14 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
+import type { Database } from "@/lib/supabase/types";
+
 /**
  * Service-role Supabase client. Bypasses RLS - server-only, never import
  * from client components or expose the key to the browser.
  *
- * Needed for tables like `bank_connections` that hold no RLS policies yet
- * (see supabase/migrations/20260913025944_bank_connectors.sql): until real
- * auth exists, this is the only client allowed to touch them.
- *
- * Left untyped against `Database` on purpose: that file is still the
- * pre-migration placeholder (see lib/supabase/types.ts). Re-parametrize with
- * `Database` once `npm run db:types` has been run against a migrated DB.
+ * Needed for the `source_*` tables, which hold no RLS policies yet (see
+ * supabase/migrations/20260913071500_source_layer.sql): until real auth
+ * exists, this is the only client allowed to touch them.
  */
 export const createServiceClient = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -22,7 +20,7 @@ export const createServiceClient = () => {
     );
   }
 
-  return createSupabaseClient(url, key, {
+  return createSupabaseClient<Database>(url, key, {
     auth: { persistSession: false },
   });
 };

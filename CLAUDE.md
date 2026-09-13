@@ -51,8 +51,8 @@
 - ✅ Supabase connected
 - ✅ Environment variables configured (all 3 environments)
 - ✅ Local development ready
-- ❌ Data connectors (not started)
-- ❌ Database schema (not started)
+- ✅ Source Layer: provider-neutral schema + Plaid and Rho adapters (`lib/source/`)
+- ❌ Numerical Model (not started)
 - ❌ Onboarding flow (not started)
 - ❌ Forecasting engine (not started)
 - ❌ Agent implementation (not started)

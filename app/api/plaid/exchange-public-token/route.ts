@@ -2,10 +2,16 @@ import { resolveCompanyContext } from "@/lib/company/context";
 import { getPlaidClient } from "@/lib/plaid/client";
 import { createServiceClient } from "@/lib/supabase/service";
 
+export const runtime = "nodejs";
+
 /**
  * Exchanges a Plaid Link `public_token` for a permanent `access_token` and
- * stores the resulting connection. Call this from the client right after
+ * stores it as a source connection. Call this from the client right after
  * Plaid Link's `onSuccess` fires.
+ *
+ * Plaid-specific by nature - the Link handshake has no analogue in Rho, which
+ * is linked with a pasted API token via /api/source/connections. Everything
+ * after this point is provider-neutral: sync runs through /api/source/sync.
  */
 export async function POST(req: Request) {
   const { companyId } = resolveCompanyContext(req);
@@ -24,21 +30,29 @@ export async function POST(req: Request) {
     });
 
     const supabase = createServiceClient();
+    // Upsert, not insert: re-linking an Item that already exists should point
+    // the existing connection at the new access token rather than failing on
+    // the uniqueness constraint, which is what the previous version did.
     const { data, error } = await supabase
-      .from("bank_connections")
-      .insert({
-        company_id: companyId,
-        provider: "plaid",
-        provider_item_id: exchange.data.item_id,
-        access_token: exchange.data.access_token,
-        institution_name: institutionName,
-      })
+      .from("source_connections")
+      .upsert(
+        {
+          company_id: companyId,
+          provider: "plaid",
+          provider_connection_id: exchange.data.item_id,
+          display_name: institutionName,
+          credentials: { access_token: exchange.data.access_token },
+          status: "active",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "company_id,provider,provider_connection_id" }
+      )
       .select("id")
       .single();
 
     if (error) throw error;
 
-    return Response.json({ bankConnectionId: data.id });
+    return Response.json({ connectionId: data.id });
   } catch (error) {
     console.error("Failed to exchange Plaid public token", error);
     return Response.json(

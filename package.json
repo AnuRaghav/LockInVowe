@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "eval \"$(supabase status -o env)\" && SUPABASE_INTEGRATION=1 RHO_LIVE_SMOKE=1 NEXT_PUBLIC_SUPABASE_URL=\"$API_URL\" NEXT_PUBLIC_SUPABASE_ANON_KEY=\"$ANON_KEY\" SUPABASE_SERVICE_ROLE_KEY=\"$SERVICE_ROLE_KEY\" vitest run",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:status": "supabase status",
