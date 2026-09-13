@@ -14,7 +14,7 @@ const context = (companyId = COMPANY_ID) => ({
 
 type Payload = {
   ok: boolean;
-  data?: { memories?: Array<{ id: string; content: string }>; content?: string };
+  data?: { topics?: Array<{ id: string; content: string }>; content?: string };
   error?: string;
 };
 
@@ -31,7 +31,7 @@ describe("searchMemoryTool", () => {
     const result = await search({ query: "runway policy" }, context());
 
     expect(result.ok).toBe(true);
-    expect(result.data?.memories?.[0]).toMatchObject({
+    expect(result.data?.topics?.[0]).toMatchObject({
       id: "mem_runway_floor",
       content: expect.stringContaining("12 months of runway"),
     });
@@ -44,7 +44,7 @@ describe("searchMemoryTool", () => {
   it("reads only the company from the trusted context", async () => {
     const result = await search({ query: "runway policy" }, context("company_other"));
 
-    expect(result).toMatchObject({ ok: true, data: { memories: [] } });
+    expect(result).toMatchObject({ ok: true, data: { topics: [] } });
   });
 
   it("returns a failure envelope when company context is missing", async () => {

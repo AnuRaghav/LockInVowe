@@ -7,11 +7,21 @@ import { createSeededPersistentMemory } from "@/lib/memory/seed";
 
 const COMPANY_ID = "company_test_1";
 
+/**
+ * No brief by default.
+ *
+ * These cases are about selection and thread scoping, and `loadBrief` is
+ * injected so none of them reach for a database. The brief's own behaviour is
+ * covered in `lib/semantic/brief/brief.test.ts` and in the end-to-end flow.
+ */
+const noBrief = async () => null;
+
 const builder = (threadMemory = new InMemoryThreadMemory()) => ({
   threadMemory,
   contextBuilder: createSamContextBuilder({
     persistentMemory: createSeededPersistentMemory(COMPANY_ID),
     threadMemory,
+    loadBrief: noBrief,
   }),
 });
 
@@ -33,6 +43,7 @@ describe("SamContextBuilder", () => {
     const contextBuilder = createSamContextBuilder({
       persistentMemory: createSeededPersistentMemory(COMPANY_ID),
       maxMemories: 1,
+      loadBrief: noBrief,
     });
 
     const context = await contextBuilder.build({
@@ -98,5 +109,72 @@ describe("SamContextBuilder", () => {
     expect(prompt).toContain("Founder wants a hiring answer today.");
     // The context itself stays structured - formatting happens here, not upstream.
     expect(context.memories[0]).toMatchObject({ id: expect.any(String), kind: "plan" });
+  });
+});
+
+describe("SamContextBuilder and the company brief", () => {
+  const brief = {
+    id: "brief_1",
+    version: 3,
+    body: "Financial posture: ~$1.8M cash, ~$170K MRR, ~$210K/month burn.\nHiring: frozen until the Series A closes.",
+    sections: [],
+    fingerprint: "fp",
+    sourceBlockIds: [],
+    generator: { kind: "deterministic" },
+    generatedAt: "2026-11-04T10:00:00Z",
+  };
+
+  it("opens every turn with the brief as baseline context", async () => {
+    const contextBuilder = createSamContextBuilder({
+      persistentMemory: createSeededPersistentMemory(COMPANY_ID),
+      loadBrief: async () => brief,
+    });
+
+    const context = await contextBuilder.build({
+      runtime: { companyId: COMPANY_ID },
+      request: "Can we hire another engineer?",
+    });
+
+    expect(context.brief?.version).toBe(3);
+
+    const prompt = buildSamSystemPrompt(context);
+    expect(prompt).toContain("Company brief");
+    expect(prompt).toContain("frozen until the Series A closes");
+  });
+
+  it("keeps the brief apart from the topics selected for this question", async () => {
+    const contextBuilder = createSamContextBuilder({
+      persistentMemory: createSeededPersistentMemory(COMPANY_ID),
+      loadBrief: async () => brief,
+    });
+
+    const prompt = buildSamSystemPrompt(
+      await contextBuilder.build({
+        runtime: { companyId: COMPANY_ID },
+        request: "When are we raising?",
+      })
+    );
+
+    // Two labelled sections, doing different jobs. A model that cannot tell
+    // standing context from question-specific context cannot weigh them.
+    const briefAt = prompt.indexOf("Company brief");
+    const relevantAt = prompt.indexOf("Relevant to this question");
+    expect(briefAt).toBeGreaterThan(-1);
+    expect(relevantAt).toBeGreaterThan(briefAt);
+  });
+
+  it("still opens the turn when the brief cannot be loaded", async () => {
+    const contextBuilder = createSamContextBuilder({
+      persistentMemory: createSeededPersistentMemory(COMPANY_ID),
+      loadBrief: async () => null,
+    });
+
+    const context = await contextBuilder.build({
+      runtime: { companyId: COMPANY_ID },
+      request: "When are we raising?",
+    });
+
+    expect(context.brief).toBeNull();
+    expect(context.memories.length).toBeGreaterThan(0);
   });
 });

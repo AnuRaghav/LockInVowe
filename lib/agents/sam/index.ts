@@ -65,6 +65,7 @@ export { samAnswerSchema, type SamAnswer, type SamToolCall } from "@/lib/agents/
 export {
   SAM_TOOLS,
   calculateRunwayTool,
+  getMemoryHistoryTool,
   getMemoryTool,
   searchMemoryTool,
 } from "@/lib/agents/sam/tools";

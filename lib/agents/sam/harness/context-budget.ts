@@ -41,6 +41,7 @@ export const measureSamContext = ({
     maxChars,
     systemPromptChars,
     initialContextChars,
+    briefChars: initialContext.brief?.body.length ?? 0,
     memoryCount: initialContext.memories.length,
     threadNoteCount: initialContext.thread?.notes.length ?? 0,
     estimatedTokens: Math.ceil(systemPromptChars / CHARS_PER_TOKEN),

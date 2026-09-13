@@ -156,10 +156,10 @@ describe("runSamAgent", () => {
 
     const payload = toolPayload(result.messages) as {
       ok: boolean;
-      data?: { memories?: Array<{ id: string; content: string }> };
+      data?: { topics?: Array<{ id: string; content: string }> };
     };
     expect(payload.ok).toBe(true);
-    expect(payload.data?.memories?.[0]).toMatchObject({
+    expect(payload.data?.topics?.[0]).toMatchObject({
       id: "mem_raise_march",
       content: expect.stringContaining("March"),
     });
@@ -181,9 +181,9 @@ describe("runSamAgent", () => {
         ...withMemory({ threadId }),
       });
       const payload = toolPayload(result.messages) as {
-        data?: { memories?: Array<{ id: string }> };
+        data?: { topics?: Array<{ id: string }> };
       };
-      return payload.data?.memories?.map((memory) => memory.id) ?? [];
+      return payload.data?.topics?.map((topic) => topic.id) ?? [];
     };
 
     expect(await idsFor("thread_a")).toContain("mem_raise_march");
