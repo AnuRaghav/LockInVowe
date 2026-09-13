@@ -9,6 +9,7 @@ import {
   renderSemanticProposalRequest,
 } from "@/lib/semantic/update/prompt";
 import {
+  createSemanticProposalSchema,
   semanticProposalSchema,
   type SemanticProposal,
   type SemanticProposalRequest,
@@ -35,11 +36,18 @@ import {
 export interface ModelSemanticProposerOptions {
   /** Defaults to {@link createSemanticModel}. Injected in tests. */
   model?: BaseChatModel;
+  /** Defaults to {@link SEMANTIC_UPDATER_PROMPT}; onboarding supplies its own. */
+  prompt?: string;
+  /** Must match the `limits` the proposal will be applied under. */
+  maxOperations?: number;
 }
 
 export const createModelSemanticProposer = (
   options: ModelSemanticProposerOptions = {}
 ): SemanticProposer => {
+  const schema = createSemanticProposalSchema(options.maxOperations);
+  const prompt = options.prompt ?? SEMANTIC_UPDATER_PROMPT;
+
   // Resolved lazily, so constructing a proposer never demands an API key that
   // a caller may be about to override.
   let structured: Runnable<BaseLanguageModelInput, SemanticProposal> | null = null;
@@ -52,7 +60,7 @@ export const createModelSemanticProposer = (
     // method against a union.
     const chat: BaseChatModel = options.model ?? createSemanticModel();
 
-    structured = chat.withStructuredOutput<SemanticProposal>(semanticProposalSchema, {
+    structured = chat.withStructuredOutput<SemanticProposal>(schema, {
       name: "propose_semantic_changes",
     });
 
@@ -62,14 +70,14 @@ export const createModelSemanticProposer = (
   return {
     async propose(request: SemanticProposalRequest): Promise<SemanticProposal> {
       const result = await model().invoke([
-        new SystemMessage(SEMANTIC_UPDATER_PROMPT),
+        new SystemMessage(prompt),
         new HumanMessage(renderSemanticProposalRequest(request)),
       ]);
 
       // Re-parsed rather than trusted: `withStructuredOutput` validates what the
       // provider returned, but this is the boundary where an unvalidated object
       // would become a database write, and it costs nothing to be sure.
-      return semanticProposalSchema.parse(result);
+      return schema.parse(result);
     },
   };
 };

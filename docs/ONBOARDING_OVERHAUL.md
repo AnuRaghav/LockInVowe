@@ -193,16 +193,27 @@ harness, not a separate agent framework.
   was just said. It does not follow a fixed script.
 - **Time budget.** The checklist marks required vs. deferrable items. Past about
   8 minutes, Sam wraps up remaining required items and defers the rest.
+- **Sections.** Six, in order: company basics, company position, company
+  plans, founder working style, founder values, personal. Smaller sections
+  keep each consolidation step to a few topics.
 - **Tools:**
-  - `record_assumption`: validated writes to known assumption keys only.
-  - `record_founder_preference`: validated writes to the contract.
-  - `defer_question` / `mark_declined`.
-  - `complete_section`: triggers extraction for that section.
+  - `record_assumption`: validated writes to the assumption keys onboarding
+    may set. Never cash, payroll, or the team, which come from connected data.
+  - `record_company_profile`: the company's name and description.
+  - `record_founder_preference`: validated writes to the contract. Only
+    `detail` and `financeFluency` may be inferred.
+  - `mark_question`: answered, deferred, unsure, declined, or not applicable.
+    Personal questions cannot be marked answered before the opt-in.
+  - `complete_section`: closes the current section once its core questions
+    are resolved. Consolidation runs after the turn, not inside the tool.
 - **Extraction.** On `complete_section`, the section transcript goes to
   `updateSemanticState` with `source: "onboarding"`, and founder sections go to
   a founder-block proposer. The updater needs an onboarding prompt variant: its
   "most interactions change nothing" restraint is wrong when every answer is
   meant as baseline.
+- **Personal answers** are consolidated during the turn they are given, from
+  the in-memory text, into personal founder blocks only. The transcript then
+  stores a redacted placeholder for both the founder's answer and Sam's reply.
 - **Resumable.** `onboarding_sessions` stores the transcript (minus the
   sensitive section), checklist state, deferrals and declines. Leaving and
   returning picks up where the founder left off.
@@ -247,9 +258,11 @@ All tables follow the existing pattern: RLS on, service role only.
    founder stores (`lib/founder/`), onboarding session store
    (`lib/onboarding/sessions.ts`), new validated assumption keys. Integration
    tests for scope isolation and sensitive-block rules.
-2. **Interview engine.** Checklist definitions, onboarding prompt, tools,
-   section extraction, onboarding updater variant. Tested against scripted
-   founder transcripts, including one that declines every sensitive question.
+2. **Interview engine.** *(Built.)* Checklist definitions
+   (`lib/onboarding/checklist.ts`), onboarding prompt, tools, section and
+   personal-answer extraction, onboarding updater variant, and
+   `runOnboardingTurn`. Tested against scripted founder transcripts, including
+   one that declines every sensitive question.
 3. **UI.** Replace the Model step in `app/onboarding/page.tsx` with the chat
    interview and inline widgets (currency input, team/hires table from Gusto,
    choice chips for preference and scenario questions), then playback and

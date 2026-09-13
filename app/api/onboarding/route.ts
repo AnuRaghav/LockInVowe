@@ -11,38 +11,7 @@ import {
   type OnboardingAnswers,
   type PlannedHire,
 } from "@/lib/company/assumptions";
-import type { SourceProviderId } from "@/lib/source";
-import { createServiceClient } from "@/lib/supabase/service";
-
-/** Whether an active source connection exists for a provider - independent of whether it has produced any data yet. */
-const hasActiveConnection = async (
-  companyId: string,
-  provider: SourceProviderId
-): Promise<boolean> => {
-  const supabase = createServiceClient();
-  const { count, error } = await supabase
-    .from("source_connections")
-    .select("id", { count: "exact", head: true })
-    .eq("company_id", companyId)
-    .eq("provider", provider)
-    .eq("status", "active");
-
-  if (error) throw error;
-  return (count ?? 0) > 0;
-};
-
-/** Gusto lives outside the Source Layer, so its connection has its own table. */
-const hasActivePayrollConnection = async (companyId: string): Promise<boolean> => {
-  const supabase = createServiceClient();
-  const { count, error } = await supabase
-    .from("payroll_connections")
-    .select("id", { count: "exact", head: true })
-    .eq("company_id", companyId)
-    .eq("status", "active");
-
-  if (error) throw error;
-  return (count ?? 0) > 0;
-};
+import { hasActiveConnection, hasActivePayrollConnection } from "@/lib/onboarding/facts";
 
 /** Current onboarding state: derived cash/payroll/revenue plus whatever has been saved so far. */
 export async function GET(req: Request) {
