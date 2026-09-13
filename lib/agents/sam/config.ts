@@ -38,7 +38,13 @@ const requireEnv = (name: string): string => {
   return value;
 };
 
-const readInt = (name: string, fallback: number): number => {
+/**
+ * Reads a positive-integer setting from the environment.
+ *
+ * Shared with the execution policy so every numeric knob Sam has - token caps,
+ * call budgets, deadlines - is parsed and validated the same way.
+ */
+export const readIntEnv = (name: string, fallback: number): number => {
   const raw = process.env[name];
   if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
@@ -69,7 +75,7 @@ export const getSamModelConfig = (
   apiKey: overrides.apiKey ?? requireEnv("ANTHROPIC_API_KEY"),
   model: overrides.model ?? process.env.SAM_MODEL ?? DEFAULT_SAM_MODEL,
   maxTokens:
-    overrides.maxTokens ?? readInt("SAM_MAX_TOKENS", DEFAULT_SAM_MAX_TOKENS),
+    overrides.maxTokens ?? readIntEnv("SAM_MAX_TOKENS", DEFAULT_SAM_MAX_TOKENS),
   effort: overrides.effort ?? readEffort(),
 });
 

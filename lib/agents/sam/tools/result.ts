@@ -1,3 +1,5 @@
+import { isRetryableError } from "@/lib/agents/sam/harness/outcome";
+
 /**
  * One serialization + error shape for every Sam tool.
  *
@@ -19,6 +21,12 @@ export const toolFailure = (error: string): string =>
 /**
  * Wraps a tool body so domain errors come back as `ok: false` instead of
  * killing the run. Use this in every tool adapter.
+ *
+ * Transient infrastructure failures are the one exception: a dropped socket or
+ * a throttled backend says nothing about whether the call was valid, so it is
+ * rethrown for the harness's retry middleware to deal with. Turning it into an
+ * `ok: false` here would tell Sam the *company* has a problem when the network
+ * does, and would spend a reasoning turn on something a retry fixes silently.
  */
 export const runTool = async (
   execute: () => unknown | Promise<unknown>
@@ -26,6 +34,8 @@ export const runTool = async (
   try {
     return toolSuccess(await execute());
   } catch (error) {
+    if (isRetryableError(error)) throw error;
+
     return toolFailure(
       error instanceof Error ? error.message : "Unknown tool error."
     );
