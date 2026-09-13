@@ -2,11 +2,12 @@ import { HumanMessage } from "@langchain/core/messages";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-  threads: new Map<string, { id: string; name: null; createdAt: string; messages: Array<Record<string, unknown>>; runs: Array<Record<string, unknown>> }>(),
+  threads: new Map<string, { id: string; name: string | null; createdAt: string; messages: Array<Record<string, unknown>>; runs: Array<Record<string, unknown>> }>(),
   nextThread: 1,
   nextMessage: 1,
   nextRun: 1,
   outcome: "completed" as "completed" | "failed" | "cancelled",
+  authenticated: true,
 }));
 
 const stream = vi.hoisted(() => vi.fn(async function* (input: { messages: Array<{ text: string; getType(): string }>; runId: string; context: Record<string, unknown> }) {
@@ -21,13 +22,28 @@ const stream = vi.hoisted(() => vi.fn(async function* (input: { messages: Array<
 }));
 
 vi.mock("@/lib/agents/sam", () => ({ streamSamAgent: stream }));
-vi.mock("@/lib/company/context", () => ({
-  UnauthenticatedError: class UnauthenticatedError extends Error {},
-  resolveCompanyContext: async () => ({ companyId: "trusted-company" }),
-}));
+vi.mock("@/lib/company/context", () => {
+  class UnauthenticatedError extends Error {}
+  return {
+    UnauthenticatedError,
+    resolveCompanyContext: async () => {
+      if (!state.authenticated) throw new UnauthenticatedError();
+      return { companyId: "trusted-company" };
+    },
+  };
+});
 vi.mock("@/lib/conversations/store", () => ({
   ConversationError: class ConversationError extends Error { constructor(message: string, readonly status: number) { super(message); } },
   createConversationStore: () => ({
+    async createThread(_companyId: string, name?: string) {
+      const id = `thread-${state.nextThread++}`;
+      const thread = { id, name: name ?? null, createdAt: new Date().toISOString(), messages: [], runs: [] };
+      state.threads.set(id, thread);
+      return { id, name: thread.name, createdAt: thread.createdAt };
+    },
+    async listThreads() {
+      return [...state.threads.values()].map(({ id, name, createdAt }) => ({ id, name, createdAt }));
+    },
     async begin(_companyId: string, content: string, suppliedId?: string) {
       const id = suppliedId ?? `thread-${state.nextThread++}`;
       let thread = state.threads.get(id);
@@ -60,15 +76,34 @@ vi.mock("ai", () => ({ createDataStreamResponse: async ({ execute }: { execute: 
 } }));
 
 const { POST } = await import("./route");
+const { GET: listThreads, POST: createThread } = await import("../threads/route");
 const { GET: openThread } = await import("../threads/[threadId]/route");
 
 beforeEach(() => {
   state.threads.clear(); state.nextThread = 1; state.nextMessage = 1; state.nextRun = 1;
   state.outcome = "completed";
+  state.authenticated = true;
   stream.mockClear();
 });
 
 describe("durable Sam conversations", () => {
+  it("uses authenticated thread endpoints and rejects conversation access when signed out", async () => {
+    const created = await createThread(new Request("http://localhost/api/threads", {
+      method: "POST",
+      body: JSON.stringify({ name: "Planning" }),
+    }));
+    expect(created.status).toBe(201);
+    expect((await created.json()).thread.name).toBe("Planning");
+    expect((await (await listThreads(new Request("http://localhost/api/threads"))).json()).threads).toHaveLength(1);
+
+    state.authenticated = false;
+    expect((await listThreads(new Request("http://localhost/api/threads"))).status).toBe(401);
+    expect((await POST(new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({ content: "private question" }),
+    }))).status).toBe(401);
+  });
+
   it("loads canonical history for multiple turns and reconstructs it when reopened", async () => {
     const first = await POST(new Request("http://localhost/api/chat", { method: "POST", body: JSON.stringify({ content: "First question" }) }));
     const threadId = first.headers.get("x-thread-id")!;
