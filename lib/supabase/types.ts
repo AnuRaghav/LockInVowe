@@ -65,6 +65,166 @@ export type Database = {
         }
         Relationships: []
       }
+      payroll_connections: {
+        Row: {
+          access_token: string
+          access_token_expires_at: string
+          company_id: string
+          created_at: string
+          id: string
+          last_synced_at: string | null
+          provider: string
+          provider_company_id: string
+          refresh_token: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          access_token_expires_at: string
+          company_id: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          provider?: string
+          provider_company_id: string
+          refresh_token: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          access_token_expires_at?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          provider?: string
+          provider_company_id?: string
+          refresh_token?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      payroll_employees: {
+        Row: {
+          annual_salary_usd: number | null
+          company_id: string
+          created_at: string
+          department: string | null
+          employment_status: string | null
+          first_name: string | null
+          hourly_rate_usd: number | null
+          id: string
+          last_name: string | null
+          payment_unit: string | null
+          payroll_connection_id: string
+          provider_employee_id: string
+          start_date: string | null
+          termination_date: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          annual_salary_usd?: number | null
+          company_id: string
+          created_at?: string
+          department?: string | null
+          employment_status?: string | null
+          first_name?: string | null
+          hourly_rate_usd?: number | null
+          id?: string
+          last_name?: string | null
+          payment_unit?: string | null
+          payroll_connection_id: string
+          provider_employee_id: string
+          start_date?: string | null
+          termination_date?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          annual_salary_usd?: number | null
+          company_id?: string
+          created_at?: string
+          department?: string | null
+          employment_status?: string | null
+          first_name?: string | null
+          hourly_rate_usd?: number | null
+          id?: string
+          last_name?: string | null
+          payment_unit?: string | null
+          payroll_connection_id?: string
+          provider_employee_id?: string
+          start_date?: string | null
+          termination_date?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_employees_payroll_connection_id_fkey"
+            columns: ["payroll_connection_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_runs: {
+        Row: {
+          check_date: string
+          company_id: string
+          created_at: string
+          id: string
+          pay_period_end: string
+          pay_period_start: string
+          payroll_connection_id: string
+          processed: boolean
+          provider_payroll_id: string
+          total_employer_cost_usd: number
+          total_gross_pay_usd: number
+          updated_at: string
+        }
+        Insert: {
+          check_date: string
+          company_id: string
+          created_at?: string
+          id?: string
+          pay_period_end: string
+          pay_period_start: string
+          payroll_connection_id: string
+          processed?: boolean
+          provider_payroll_id: string
+          total_employer_cost_usd: number
+          total_gross_pay_usd: number
+          updated_at?: string
+        }
+        Update: {
+          check_date?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          pay_period_end?: string
+          pay_period_start?: string
+          payroll_connection_id?: string
+          processed?: boolean
+          provider_payroll_id?: string
+          total_employer_cost_usd?: number
+          total_gross_pay_usd?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_runs_payroll_connection_id_fkey"
+            columns: ["payroll_connection_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       source_accounts: {
         Row: {
           company_id: string
