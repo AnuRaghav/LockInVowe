@@ -159,50 +159,52 @@ export function EmptyConversation({
 
   return (
     <div className={cn(
-      "relative isolate mx-auto flex w-full max-w-[64rem] flex-1 flex-col items-center justify-center gap-7 overflow-hidden px-5 py-16 text-center sm:px-6",
-      transitioning && "pointer-events-none absolute inset-0 max-w-none",
+      "relative isolate mx-auto flex w-full max-w-[72rem] flex-1 flex-col items-center justify-center overflow-hidden px-5 py-14 text-center sm:px-6",
+      transitioning && "pointer-events-none h-full max-w-none",
     )}>
       <SamOrb
         energy={phase === "activating" ? 0.88 : phase === "working" ? 0.68 : 0.28}
         points={760}
         className={cn(
-          "pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-square w-[min(82vw,34rem)] -translate-x-1/2 -translate-y-1/2 [mask-image:radial-gradient(circle,black_42%,transparent_78%)] motion-reduce:transition-opacity",
+          "pointer-events-none absolute left-1/2 top-[52%] z-0 aspect-square w-[min(88vw,38rem)] -translate-x-1/2 -translate-y-1/2 [mask-image:radial-gradient(circle,black_42%,transparent_78%)] motion-reduce:transition-opacity",
           active && "sam-first-orb-active opacity-70 transition-opacity duration-700 ease-out",
           fadingOut && "opacity-0 transition-opacity duration-1000 ease-out",
-          !transitioning && "opacity-45 transition-opacity duration-500",
+          !transitioning && "opacity-55 transition-opacity duration-500",
         )}
       />
-      <div className={cn(
-        "relative z-10 flex flex-col gap-2 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-opacity",
-        transitioning && "translate-y-1 scale-[0.98] opacity-0",
-      )}>
-        <h2 className="text-balance text-2xl font-semibold tracking-tight text-foreground">
-          Ask Sam.
-        </h2>
-        <p className="max-w-[42ch] text-[15px] leading-relaxed text-muted">
-          Sam has your company&apos;s numbers. Ask about runway, hiring, spend, or a scenario.
-          Answers and charts appear right here in the conversation.
-        </p>
-      </div>
-      {onAsk && (
-        <ul className={cn(
-          "relative z-10 flex flex-col items-center gap-2 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-opacity",
+      <div className="relative z-10 flex w-full translate-y-[4vh] flex-col items-center gap-[min(16vh,8rem)]">
+        <div className={cn(
+          "flex max-w-[42ch] flex-col gap-2 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-opacity",
           transitioning && "translate-y-1 scale-[0.98] opacity-0",
         )}>
+          <h2 className="text-balance text-2xl font-semibold tracking-tight text-foreground">
+            Ask Sam.
+          </h2>
+          <p className="text-[15px] leading-relaxed text-muted">
+            Sam has your company&apos;s numbers. Ask about runway, hiring, spend, or a scenario.
+            Answers and charts appear right here in the conversation.
+          </p>
+        </div>
+        {onAsk && (
+          <ul className={cn(
+            "flex w-full max-w-[62rem] flex-col items-center justify-center gap-2 transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-opacity sm:flex-row sm:flex-wrap",
+            transitioning && "translate-y-1 scale-[0.98] opacity-0",
+          )}>
           {STARTERS.map((question) => (
             <li key={question}>
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() => onAsk(question)}
-                className="rounded-full border border-border px-4 py-2 text-[13.5px] text-muted transition-colors hover:border-border-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="max-w-[calc(100vw-2.5rem)] rounded-full border border-border bg-background/35 px-4 py-2 text-[13.5px] text-muted backdrop-blur-sm transition-colors hover:border-border-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-none"
               >
                 {question}
               </button>
             </li>
           ))}
-        </ul>
-      )}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

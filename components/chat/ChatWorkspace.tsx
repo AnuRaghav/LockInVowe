@@ -459,7 +459,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
         onDelete={remove}
       />
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="relative flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 flex-none items-center gap-2 border-b border-border px-5 sm:px-6">
           <button
             type="button"
@@ -491,7 +491,7 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
             const node = event.currentTarget;
             stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
           }}
-          className="relative flex min-h-0 flex-1 flex-col overflow-y-auto"
+          className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto"
         >
           {messagesLoading && !run ? (
             <p className="mx-auto w-full max-w-[46rem] px-5 py-10 text-[13px] text-muted-2 sm:px-6">
@@ -509,18 +509,23 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
                   className={firstMessagePhase ? "transition-opacity duration-300" : undefined}
                 />
               )}
-              {(!hasConversation || firstMessagePhase) && (
+              {!hasConversation && (
                 <EmptyConversation
                   onAsk={send}
-                  disabled={messagesLoading || hasConversation}
-                  phase={firstMessagePhase ?? "idle"}
+                  disabled={messagesLoading}
                 />
               )}
             </>
           )}
         </div>
 
-        <div className="flex-none border-t border-border pt-4">
+        {firstMessagePhase && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-[104px] top-16 z-0 overflow-hidden">
+            <EmptyConversation phase={firstMessagePhase} disabled />
+          </div>
+        )}
+
+        <div className="relative z-20 flex-none border-t border-border pt-4">
           <Composer
             onSend={send}
             onStop={stop}
