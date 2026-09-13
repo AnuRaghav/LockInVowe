@@ -7,8 +7,64 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
+      companies: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          onboarding_completed_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          onboarding_completed_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          onboarding_completed_at?: string | null
+        }
+        Relationships: []
+      }
+      company_assumptions: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          key: string
+          source: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          key: string
+          source?: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          key?: string
+          source?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
       source_accounts: {
         Row: {
           company_id: string
@@ -392,7 +448,7 @@ export type Database = {
         | "other"
       source_connection_status: "active" | "error" | "revoked"
       source_entry_status: "pending" | "posted" | "failed" | "scheduled"
-      source_provider: "plaid" | "rho"
+      source_provider: "plaid" | "rho" | "stripe"
       source_record_type: "account" | "transaction"
       source_sync_status: "running" | "succeeded" | "failed"
     }
@@ -532,10 +588,9 @@ export const Constants = {
       ],
       source_connection_status: ["active", "error", "revoked"],
       source_entry_status: ["pending", "posted", "failed", "scheduled"],
-      source_provider: ["plaid", "rho"],
+      source_provider: ["plaid", "rho", "stripe"],
       source_record_type: ["account", "transaction"],
       source_sync_status: ["running", "succeeded", "failed"],
     },
   },
 } as const
-

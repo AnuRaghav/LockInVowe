@@ -1,6 +1,7 @@
 import { resolveCompanyContext } from "@/lib/company/context";
 import { deriveConnectionId, readEnvironment } from "@/lib/source/rho/adapter";
 import { createRhoClient, isRhoEnvironment } from "@/lib/source/rho/client";
+import { createStripeClient, readSecretKey } from "@/lib/source/stripe/client";
 import { createServiceClient } from "@/lib/supabase/service";
 
 export const runtime = "nodejs";
@@ -38,9 +39,16 @@ export async function POST(req: Request) {
   const { companyId } = resolveCompanyContext(req);
   const body = await req.json().catch(() => null);
 
+  if (body?.provider === "stripe") {
+    return createStripeConnection(companyId, body);
+  }
+
   if (body?.provider !== "rho") {
     return Response.json(
-      { error: "Only `rho` connections are created here. Plaid uses /api/plaid/exchange-public-token." },
+      {
+        error:
+          "Only `rho` and `stripe` connections are created here. Plaid uses /api/plaid/exchange-public-token.",
+      },
       { status: 400 }
     );
   }
@@ -87,6 +95,65 @@ export async function POST(req: Request) {
   if (error) {
     console.error("Failed to store Rho connection", error);
     return Response.json({ error: "Failed to link Rho." }, { status: 500 });
+  }
+
+  return Response.json({ connection: data });
+}
+
+/**
+ * Links the platform Stripe (sandbox) account.
+ *
+ * Stripe has no Link-style handshake for a first-party integration either,
+ * but unlike Rho there is no per-company token to paste: the MVP runs one
+ * Stripe sandbox account (provisioned via the Vercel Marketplace) shared by
+ * the single development company, keyed by `STRIPE_SECRET_KEY`. A future
+ * multi-tenant setup would replace this with Stripe Connect and a real
+ * per-company `secret_key` credential; nothing downstream of the connection
+ * row would need to change.
+ */
+async function createStripeConnection(
+  companyId: string,
+  body: { displayName?: unknown }
+) {
+  let accountId: string;
+
+  try {
+    const secretKey = readSecretKey({});
+    const stripe = createStripeClient(secretKey);
+    const account = await stripe.accounts.retrieve(null);
+    accountId = account.id;
+  } catch (error) {
+    console.error("Stripe credential check failed", error);
+    return Response.json(
+      { error: "Could not reach Stripe with the configured secret key." },
+      { status: 400 }
+    );
+  }
+
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("source_connections")
+    .upsert(
+      {
+        company_id: companyId,
+        provider: "stripe",
+        provider_connection_id: accountId,
+        display_name:
+          typeof body?.displayName === "string" ? body.displayName : "Stripe (Sandbox)",
+        // The secret key itself stays in STRIPE_SECRET_KEY, not here - see
+        // lib/source/stripe/client.ts. Recorded only for traceability.
+        credentials: { account_id: accountId },
+        status: "active",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "company_id,provider,provider_connection_id" }
+    )
+    .select("id, provider, display_name, status")
+    .single();
+
+  if (error) {
+    console.error("Failed to store Stripe connection", error);
+    return Response.json({ error: "Failed to link Stripe." }, { status: 500 });
   }
 
   return Response.json({ connection: data });
