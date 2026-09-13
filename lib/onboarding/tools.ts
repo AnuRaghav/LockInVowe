@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { requireSamContext, type samRuntimeContextSchema } from "@/lib/agents/sam/context";
 import type { SamToolPolicyRegistry } from "@/lib/agents/sam/tools/policy";
-import { runTool } from "@/lib/agents/sam/tools/result";
+import { runTool, type Epistemic } from "@/lib/agents/sam/tools/result";
 import { ASSUMPTION_KEYS, parseAssumptionValue } from "@/lib/company/assumptions";
 import {
   BAD_NEWS_DELIVERY,
@@ -65,6 +65,9 @@ const onboardingRun = async (runtime: Runtime, toolName: string) => {
   return { identity, capability, session };
 };
 
+/** Everything these tools record was stated by the founder in this interview. */
+const ONBOARDING_EPISTEMIC: Epistemic = { class: "conversation_claim", origin: "onboarding" };
+
 const now = () => new Date().toISOString();
 
 const requireQuestion = (id: string) => {
@@ -115,7 +118,7 @@ export const recordAssumptionTool = tool(
       }
 
       return { recorded: input.key, questionAnswered: question?.id ?? null };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: RECORD_ASSUMPTION,
     description:
@@ -157,7 +160,7 @@ export const recordCompanyProfileTool = tool(
       }
 
       return { recorded: true, questionAnswered: question?.id ?? null };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: RECORD_COMPANY_PROFILE,
     description:
@@ -209,7 +212,7 @@ export const recordFounderPreferenceTool = tool(
       }
 
       return { recorded: Object.keys(patch), questionAnswered: question?.id ?? null };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: RECORD_FOUNDER_PREFERENCE,
     description:
@@ -268,7 +271,7 @@ export const markQuestionTool = tool(
 
       await capability.sessions.record(identity, capability.sessionId, { checklist, openItems });
       return { marked: questions.map((question) => question.id), state: input.state };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: MARK_QUESTION,
     description:
@@ -323,7 +326,7 @@ export const completeSectionTool = tool(
           : null,
         onboardingComplete: next === null,
       };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: COMPLETE_SECTION,
     description:
@@ -339,7 +342,7 @@ export const presentChoicesTool = tool(
     runTool(async () => {
       await onboardingRun(runtime, PRESENT_CHOICES);
       return { presented: input.questionId, options: ONBOARDING_CHOICES[input.questionId] };
-    }),
+    }, ONBOARDING_EPISTEMIC),
   {
     name: PRESENT_CHOICES,
     description:

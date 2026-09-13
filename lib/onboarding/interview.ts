@@ -165,7 +165,7 @@ export const runOnboardingTurn = async (input: OnboardingTurnInput): Promise<Onb
     // The prompt above is the whole context; this only hands over the snapshot
     // already loaded, so the harness does not read financial data twice.
     contextBuilder: {
-      build: async () => ({ companyId: identity.companyId, thread: null, brief: null, memories: [], numerical }),
+      build: async () => ({ companyId: identity.companyId, thread: null, brief: null, directory: null, memories: [], numerical }),
     },
     model: input.model,
     signal: input.signal,
