@@ -29,7 +29,7 @@ const INK = { muted: "rgba(244, 245, 242, 0.68)", faint: "rgba(244, 245, 242, 0.
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 const exact = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
-export function ChartFigure({ spec }: { spec: ChartSpec }) {
+export function ChartFigure({ spec, heightClassName = "h-64" }: { spec: ChartSpec; heightClassName?: string }) {
   const rows = toChartRows(spec);
   const multiSeries = spec.series.length > 1;
   const withUnit = (value: number) => (spec.yLabel ? `${exact.format(value)} ${spec.yLabel}` : exact.format(value));
@@ -80,7 +80,7 @@ export function ChartFigure({ spec }: { spec: ChartSpec }) {
         <span className="text-[14px] font-medium text-foreground">{spec.title}</span>
         {spec.yLabel && <span className="text-[12.5px] text-muted-2">{spec.yLabel}</span>}
       </figcaption>
-      <div className="h-64 w-full">
+      <div className={heightClassName + " w-full"}>
         <ResponsiveContainer width="100%" height="100%">
           {spec.type === "bar" ? (
             <BarChart data={rows} margin={margin} barGap={2}>

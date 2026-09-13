@@ -1,95 +1,73 @@
 import Link from "next/link";
-import { ChatCircleText, WarningCircle } from "@phosphor-icons/react/dist/ssr";
+import { ChatCircleText } from "@phosphor-icons/react/dist/ssr";
 
+import { InsightCard } from "@/components/dashboard/InsightCard";
+import { NarratedInsight } from "@/components/dashboard/NarratedInsight";
 import { SamLogo } from "@/components/SamLogo";
-import { BlurFade } from "@/components/ui/blur-fade";
-import type { Insight, InsightTone } from "@/lib/insights/types";
-import { cn } from "@/lib/utils";
+import type { DigestInsight } from "@/lib/insights/types";
 
-const toneStyles: Record<InsightTone, string> = {
-  positive: "border-accent/30 bg-accent-soft",
-  warning: "border-danger/25 bg-danger-soft",
-  critical: "border-danger/40 bg-danger-soft",
-  neutral: "border-border bg-surface",
-};
+const TODAY_LABEL = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date());
 
-/** The dashboard proper - split out of app/dashboard/page.tsx so DashboardReveal can gate it behind the loading screen. */
-export function DashboardContent({ insights }: { insights: Insight[] }) {
+/**
+ * The daily digest itself - split out of app/dashboard/page.tsx so
+ * DashboardReveal can gate it behind the loading screen.
+ *
+ * Layout: all five insights in one uniform grid (3-then-2 on desktop), sized
+ * to fit on one screen without scrolling - a hero-plus-grid shape read
+ * better on paper but cost too much vertical space for a live demo.
+ */
+export function DashboardContent({ insights }: { insights: DigestInsight[] }) {
+  const [hero] = insights;
+
   return (
     <div className="flex flex-1 flex-col">
-      <header className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-6">
+      <header className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-6">
         <Link href="/" aria-label="Sam home" className="inline-flex shrink-0 items-center">
           <SamLogo />
         </Link>
-        <nav className="flex items-center gap-5">
-          <Link
-            href="/onboarding"
-            className="text-[13px] text-muted underline underline-offset-4 hover:text-foreground"
-          >
-            Edit your model
-          </Link>
-          <form action="/auth/sign-out" method="post">
-            <button
-              type="submit"
+        <div className="flex items-center gap-4">
+          <div className="hidden items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-2 sm:flex">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+            </span>
+            Daily digest &middot; {TODAY_LABEL}
+          </div>
+          <nav className="flex items-center gap-4">
+            <Link
+              href="/onboarding"
               className="text-[13px] text-muted underline underline-offset-4 hover:text-foreground"
             >
-              Sign out
-            </button>
-          </form>
-        </nav>
+              Edit model
+            </Link>
+            <form action="/auth/sign-out" method="post">
+              <button
+                type="submit"
+                className="text-[13px] text-muted underline underline-offset-4 hover:text-foreground"
+              >
+                Sign out
+              </button>
+            </form>
+          </nav>
+        </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 pb-24 pt-8">
-        <BlurFade className="flex flex-col gap-2">
-          <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-            Here&apos;s where things stand.
-          </h1>
-          <p className="max-w-[60ch] text-[15px] leading-relaxed text-muted">
-            Sam looked at your connected data and your model. Three things worth knowing before
-            you ask anything.
-          </p>
-        </BlurFade>
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-3 px-6 pb-6 pt-1">
+        {hero && <NarratedInsight text={hero.note} className="py-1" />}
 
-        <BlurFade delay={0.05} className="grid gap-4 sm:grid-cols-3">
-          {insights.map((insight) => (
-            <Link
-              key={insight.id}
-              href="/chat"
-              className={cn(
-                "group flex flex-col gap-2.5 rounded-2xl border p-5 transition-[border-color,transform] duration-200 hover:-translate-y-0.5",
-                toneStyles[insight.tone],
-              )}
-            >
-              {insight.tone !== "neutral" && (
-                <WarningCircle
-                  weight="fill"
-                  className={cn("h-5 w-5", insight.tone === "positive" ? "text-accent" : "text-danger")}
-                />
-              )}
-              <h2 className="text-[15px] font-semibold leading-snug text-foreground">
-                {insight.title}
-              </h2>
-              <p className="text-[13px] leading-relaxed text-muted">{insight.body}</p>
-              {insight.followUpPrompt && (
-                <span className="mt-auto inline-flex items-center gap-1.5 pt-1 text-[13px] font-medium text-accent opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                  Ask Sam
-                  <ChatCircleText weight="bold" className="h-3.5 w-3.5" />
-                </span>
-              )}
-            </Link>
+        <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {insights.map((insight, i) => (
+            <InsightCard key={insight.id} insight={insight} delay={0.06 * i} />
           ))}
-        </BlurFade>
+        </div>
 
-        <BlurFade delay={0.1} className="flex flex-col items-start gap-3 border-t border-border pt-8">
-          <p className="text-[13px] text-muted-2">Have a more specific question?</p>
-          <Link
-            href="/chat"
-            className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-sm font-medium text-accent-ink transition-[background-color,transform] duration-200 hover:bg-accent-strong active:scale-[0.98]"
-          >
-            Chat with Sam
-            <ChatCircleText weight="bold" className="h-4 w-4" />
-          </Link>
-        </BlurFade>
+        <Link
+          href="/chat"
+          className="inline-flex w-fit items-center gap-1.5 self-center rounded-full bg-accent px-4 py-2 text-[13px] font-medium text-accent-ink transition-[background-color,transform] duration-200 hover:bg-accent-strong active:scale-[0.98]"
+        >
+          Chat with Sam
+          <ChatCircleText weight="bold" className="h-3.5 w-3.5" />
+        </Link>
       </main>
     </div>
   );

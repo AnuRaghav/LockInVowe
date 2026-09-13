@@ -5,7 +5,7 @@ import { useLayoutEffect, useState } from "react";
 
 import { AgentWorkingScreen } from "@/components/dashboard/AgentWorkingScreen";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
-import type { Insight } from "@/lib/insights/types";
+import type { DigestInsight } from "@/lib/insights/types";
 
 /** Shown once per browser session - a returning visit shouldn't replay "Sam is working" every time. */
 const SEEN_KEY = "sam_dashboard_intro_seen";
@@ -37,7 +37,7 @@ const markIntroSeen = () => {
  * render then disagrees with what the server sent). The layout effect below
  * flips to "content" immediately for a returning visit, before paint.
  */
-export function DashboardReveal({ insights }: { insights: Insight[] }) {
+export function DashboardReveal({ insights }: { insights: DigestInsight[] }) {
   const [phase, setPhase] = useState<"working" | "content">("working");
 
   useLayoutEffect(() => {
