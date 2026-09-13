@@ -59,9 +59,35 @@ export interface SamExecutionPolicy {
   maxContextChars: number;
 }
 
+/**
+ * How much one question may cost.
+ *
+ * `maxModelCalls` and `maxToolCalls` are set from the runs we actually intend to
+ * support, not from a round number. The longest legitimate shape we have traced
+ * is a combined management-and-financial question:
+ *
+ *   model -> get_memory_history -> model -> get_memory -> model
+ *         -> financial_burn_runway -> model -> compare_financial_scenarios
+ *         -> model -> explain_financial_number -> model -> answer
+ *
+ * That is 5 tool calls and 6 model calls. At the previous ceiling of 8 model
+ * calls it completed only if nothing went wrong: one model retry after a
+ * provider blip and one oversized tool result refused and re-issued with a
+ * smaller `limit` both consume a round, and the founder got "I ran out of room
+ * working through that one" partway through an investigation that was going
+ * fine.
+ *
+ * 12 and 14 leave that run two spare rounds of each without making the budget
+ * decorative: a genuinely looping run still stops, and it stops on a budget
+ * rather than on the deadline. Everything else that bounds a run is unchanged
+ * and still load-bearing - the 60s deadline usually binds first in practice,
+ * repeated identical calls are refused after two, a third ends the run as
+ * `no_progress`, oversized results never reach the model, and caller
+ * cancellation is immediate.
+ */
 export const DEFAULT_SAM_EXECUTION_POLICY: SamExecutionPolicy = {
-  maxModelCalls: 8,
-  maxToolCalls: 12,
+  maxModelCalls: 12,
+  maxToolCalls: 14,
   maxCallsPerTool: {},
   maxOutputTokens: DEFAULT_SAM_MAX_TOKENS,
   runDeadlineMs: 60_000,
@@ -75,7 +101,12 @@ export const DEFAULT_SAM_EXECUTION_POLICY: SamExecutionPolicy = {
   retryJitter: true,
   maxRepeatedToolCalls: 2,
   maxToolResultChars: 8_000,
-  maxContextChars: 12_000,
+  // Covers the system prompt plus the replayed transcript. Raised from 12k with
+  // the orientation context: the directory and the plan headline add roughly
+  // 2.5k of characters that remove tool calls, and the transcript is now
+  // measured rather than ignored, so the old figure was being compared against
+  // a smaller thing than it claimed to bound.
+  maxContextChars: 16_000,
 };
 
 /**

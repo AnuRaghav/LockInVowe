@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { supportsMemoryHistory } from "@/lib/memory/types";
+import { supportsMemoryDirectory, supportsMemoryHistory } from "@/lib/memory/types";
 import { createSeededPersistentMemory } from "@/lib/memory/seed";
 import { InMemorySemanticBlockStore } from "@/lib/semantic/in-memory";
 import { SemanticPersistentMemory } from "@/lib/semantic/memory-adapter";
@@ -136,5 +136,61 @@ describe("memory history capability", () => {
     // The fallback used when no database is configured. Asking it "how has this
     // changed?" must be answerable with "it cannot say", not with a guess.
     expect(supportsMemoryHistory(createSeededPersistentMemory())).toBe(false);
+  });
+});
+
+describe("the company-knowledge directory", () => {
+  it("lists every current topic, whatever the question would have matched", async () => {
+    const directory = await memory.list(SCOPE);
+
+    expect(directory.entries.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["hiring", "fundraising"])
+    );
+    expect(directory.truncated).toBe(false);
+  });
+
+  it("carries the id, title and summary but never the body", async () => {
+    const { entries } = await memory.list(SCOPE);
+    const hiring = entries.find((entry) => entry.id === "hiring");
+
+    expect(hiring).toEqual({
+      // The key, not a uuid: this is what the model passes back to get_memory.
+      id: "hiring",
+      title: "Hiring",
+      // No `summary` on the block, so the body's first sentence stands in - an
+      // entry that only said "Hiring" would tell the model nothing.
+      summary: "Engineering hiring is frozen until the Series A closes.",
+      status: "active",
+      asOf: "2026-11-04",
+      importance: 0.9,
+    });
+
+    // The current body's remaining detail, and every superseded body, stay
+    // behind get_memory and get_memory_history.
+    expect(JSON.stringify(entries)).not.toContain("two engineers");
+  });
+
+  it("shows the current understanding of a revised topic, not the original", async () => {
+    const { entries } = await memory.list(SCOPE);
+    const hiring = entries.find((entry) => entry.id === "hiring");
+
+    expect(hiring?.summary).toContain("frozen");
+    expect(hiring?.asOf).toBe("2026-11-04");
+  });
+
+  it("is company-scoped", async () => {
+    expect(await memory.list(OTHER)).toEqual({ entries: [], truncated: false });
+  });
+
+  it("reports truncation rather than silently dropping topics", async () => {
+    const directory = await memory.list(SCOPE, { limit: 1 });
+
+    expect(directory.entries).toHaveLength(1);
+    expect(directory.truncated).toBe(true);
+  });
+
+  it("is an optional capability the seeded fallback also provides", () => {
+    expect(supportsMemoryDirectory(memory)).toBe(true);
+    expect(supportsMemoryDirectory(createSeededPersistentMemory())).toBe(true);
   });
 });

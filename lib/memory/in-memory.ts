@@ -1,4 +1,7 @@
 import type {
+  MemoryDirectory,
+  MemoryDirectoryEntry,
+  MemoryDirectoryReader,
   MemoryQuery,
   MemoryRecord,
   MemoryScope,
@@ -18,6 +21,34 @@ import type {
  */
 
 const DEFAULT_LIMIT = 5;
+const DEFAULT_DIRECTORY_LIMIT = 40;
+const TITLE_CHARS = 70;
+const SUMMARY_CHARS = 140;
+
+const clip = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max).trimEnd()}...` : text;
+
+/**
+ * A record as a table-of-contents line.
+ *
+ * A `MemoryRecord` is self-contained prose with no title field, so the first
+ * line is treated as the title (which is exactly what the semantic adapter
+ * writes into `content`) and whatever follows becomes the summary. For a
+ * single-sentence record there is nothing to summarise and the kind is the most
+ * useful thing left to say about it.
+ */
+const recordToDirectoryEntry = (record: MemoryRecord): MemoryDirectoryEntry => {
+  const [firstLine, ...rest] = record.content.trim().split("\n");
+  const remainder = rest.join(" ").trim();
+
+  return {
+    id: record.id,
+    title: clip(firstLine ?? record.id, TITLE_CHARS),
+    summary: remainder ? clip(remainder, SUMMARY_CHARS) : record.kind,
+    asOf: record.recordedAt,
+    importance: record.importance,
+  };
+};
 
 const STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "can", "do", "does", "for", "from",
@@ -77,7 +108,9 @@ const matchesFilters = (record: MemoryRecord, query: MemoryQuery): boolean => {
  * is what lets the context builder open a brand-new conversation with
  * something useful already in hand.
  */
-export class InMemoryPersistentMemory implements PersistentMemory {
+export class InMemoryPersistentMemory
+  implements PersistentMemory, MemoryDirectoryReader
+{
   private readonly byCompany = new Map<string, MemoryRecord[]>();
 
   constructor(seed: Record<string, MemoryRecord[]> = {}) {
@@ -106,6 +139,22 @@ export class InMemoryPersistentMemory implements PersistentMemory {
   async get(scope: MemoryScope, id: string): Promise<MemoryRecord | null> {
     const records = this.byCompany.get(scope.companyId) ?? [];
     return records.find((record) => record.id === id) ?? null;
+  }
+
+  /** Every topic this company has, most load-bearing first. Titles, not bodies. */
+  async list(
+    scope: MemoryScope,
+    options: { limit?: number } = {}
+  ): Promise<MemoryDirectory> {
+    const limit = options.limit ?? DEFAULT_DIRECTORY_LIMIT;
+    const records = [...(this.byCompany.get(scope.companyId) ?? [])].sort(
+      (a, b) => (b.importance ?? 0) - (a.importance ?? 0)
+    );
+
+    return {
+      entries: records.slice(0, limit).map(recordToDirectoryEntry),
+      truncated: records.length > limit,
+    };
   }
 
   /** Test/seed helper. Not part of {@link PersistentMemory}. */

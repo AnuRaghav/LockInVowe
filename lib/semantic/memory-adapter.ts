@@ -1,4 +1,7 @@
 import type {
+  MemoryDirectory,
+  MemoryDirectoryEntry,
+  MemoryDirectoryReader,
   MemoryHistory,
   MemoryQuery,
   MemoryRecord,
@@ -8,6 +11,7 @@ import type {
 } from "@/lib/memory/types";
 import { createSemanticBlockStore } from "@/lib/semantic/store";
 import {
+  CURRENT_STATUSES,
   SEMANTIC_KEY_PATTERN,
   UnknownSemanticBlockError,
   type SemanticBlock,
@@ -43,6 +47,38 @@ import {
 export const SEMANTIC_MEMORY_KIND = "semantic_block";
 
 const DEFAULT_LIMIT = 5;
+const DEFAULT_DIRECTORY_LIMIT = 40;
+
+/**
+ * The one line a block gets in the directory.
+ *
+ * `summary` is the block's own one-liner when it has one. When it does not, the
+ * body's first sentence is used and clipped - a directory entry has to say what
+ * the topic is about, and an entry reading only "Hiring" tells a model nothing
+ * it could not have guessed from the key.
+ */
+const SUMMARY_CHARS = 140;
+
+const directorySummary = (block: SemanticBlock): string | undefined => {
+  if (block.summary?.trim()) return block.summary.trim();
+
+  const firstSentence = block.body.trim().split(/(?<=[.!?])\s/)[0]?.trim();
+  if (!firstSentence) return undefined;
+
+  return firstSentence.length > SUMMARY_CHARS
+    ? `${firstSentence.slice(0, SUMMARY_CHARS).trimEnd()}...`
+    : firstSentence;
+};
+
+/** What a block looks like as a table-of-contents line. */
+export const blockToDirectoryEntry = (block: SemanticBlock): MemoryDirectoryEntry => ({
+  id: block.key,
+  title: block.title,
+  summary: directorySummary(block),
+  status: block.status,
+  asOf: block.asOf ?? block.updatedAt.slice(0, 10),
+  importance: block.salience,
+});
 
 /** What a block looks like once it is a memory record. */
 export const blockToMemoryRecord = (block: SemanticBlock): MemoryRecord => ({
@@ -91,7 +127,9 @@ export interface SemanticPersistentMemoryOptions {
 /**
  * A {@link PersistentMemory} (and {@link MemoryHistory}) over semantic blocks.
  */
-export class SemanticPersistentMemory implements PersistentMemory, MemoryHistory {
+export class SemanticPersistentMemory
+  implements PersistentMemory, MemoryHistory, MemoryDirectoryReader
+{
   private readonly reader: SemanticBlockReader;
 
   constructor({ reader }: SemanticPersistentMemoryOptions = {}) {
@@ -117,6 +155,33 @@ export class SemanticPersistentMemory implements PersistentMemory, MemoryHistory
     });
 
     return blocks.map(blockToMemoryRecord);
+  }
+
+  /**
+   * Every topic the company currently has an understanding of, titles only.
+   *
+   * `listCurrentBlocks` already orders by context policy, then salience, then
+   * recency - the order a cold-open context wants - so nothing is re-sorted
+   * here. One extra row is requested beyond the cap purely to learn whether
+   * there *is* an extra row: the caller has to be able to tell a complete
+   * directory from a clipped one, and a count query for that would cost a
+   * second round trip to say "and there are more".
+   */
+  async list(
+    scope: MemoryScope,
+    options: { limit?: number } = {}
+  ): Promise<MemoryDirectory> {
+    const limit = options.limit ?? DEFAULT_DIRECTORY_LIMIT;
+
+    const blocks = await this.reader.listCurrentBlocks(scope, {
+      statuses: [...CURRENT_STATUSES],
+      limit: limit + 1,
+    });
+
+    return {
+      entries: blocks.slice(0, limit).map(blockToDirectoryEntry),
+      truncated: blocks.length > limit,
+    };
   }
 
   /**
