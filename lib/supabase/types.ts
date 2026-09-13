@@ -448,7 +448,7 @@ export type Database = {
         | "other"
       source_connection_status: "active" | "error" | "revoked"
       source_entry_status: "pending" | "posted" | "failed" | "scheduled"
-      source_provider: "plaid" | "rho"
+      source_provider: "plaid" | "rho" | "stripe"
       source_record_type: "account" | "transaction"
       source_sync_status: "running" | "succeeded" | "failed"
     }
@@ -588,7 +588,7 @@ export const Constants = {
       ],
       source_connection_status: ["active", "error", "revoked"],
       source_entry_status: ["pending", "posted", "failed", "scheduled"],
-      source_provider: ["plaid", "rho"],
+      source_provider: ["plaid", "rho", "stripe"],
       source_record_type: ["account", "transaction"],
       source_sync_status: ["running", "succeeded", "failed"],
     },

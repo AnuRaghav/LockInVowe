@@ -190,7 +190,7 @@ A founder can plug Plaid into ChatGPT and query financial data. Our product main
 |-----------|--------|-------|
 | Repo setup | ✅ | GitHub + Vercel linked, env vars configured |
 | Local dev | ✅ | Ready to run: `npm install && npm run dev` |
-| Data connectors | ❌ | Not started |
+| Data connectors | 🟡 | Source Layer live for Plaid, Rho, and Stripe (sandbox); Gusto not started |
 | Database schema | ❌ | Not started |
 | Onboarding flow | ❌ | Not started |
 | Forecasting engine | ❌ | Not started |

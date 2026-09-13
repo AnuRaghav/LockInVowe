@@ -1,17 +1,19 @@
 import { createPlaidAdapter } from "@/lib/source/plaid/adapter";
 import { createRhoAdapter } from "@/lib/source/rho/adapter";
+import { createStripeAdapter } from "@/lib/source/stripe/adapter";
 import type { SourceProviderAdapter, SourceProviderId } from "@/lib/source/types";
 
 /**
  * The provider registry.
  *
  * The single place that decides which providers the Source Layer can ingest
- * from. Adding Stripe or a payroll system is a new adapter plus a line here;
- * nothing above this layer changes, because nothing above it names a provider.
+ * from. Adding a payroll system is a new adapter plus a line here; nothing
+ * above this layer changes, because nothing above it names a provider.
  */
 const ADAPTERS: Record<SourceProviderId, () => SourceProviderAdapter> = {
   plaid: () => createPlaidAdapter(),
   rho: () => createRhoAdapter(),
+  stripe: () => createStripeAdapter(),
 };
 
 export const getSourceAdapter = (provider: SourceProviderId): SourceProviderAdapter => {
