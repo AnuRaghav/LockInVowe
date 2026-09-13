@@ -5,9 +5,9 @@ import { usePlaidLink, type PlaidLinkOnSuccess } from "react-plaid-link";
 
 /**
  * Minimal end-to-end Plaid Link flow: fetch a link token, open Plaid Link,
- * exchange the resulting public token, then trigger one sync. Exists to
- * exercise the /api/plaid/* routes manually - swap for the real onboarding
- * UI once that flow is designed.
+ * exchange the resulting public token, then trigger one sync through the
+ * provider-neutral /api/source/sync route. Exists to exercise the connector
+ * manually - swap for the real onboarding UI once that flow is designed.
  */
 export const PlaidLinkButton = () => {
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -39,16 +39,16 @@ export const PlaidLinkButton = () => {
       }
 
       setStatus("Syncing transactions...");
-      const syncRes = await fetch("/api/plaid/sync", {
+      const syncRes = await fetch("/api/source/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bankConnectionId: exchangeData.bankConnectionId }),
+        body: JSON.stringify({ connectionId: exchangeData.connectionId }),
       });
       const syncData = await syncRes.json();
 
       setStatus(
         syncRes.ok
-          ? `Synced ${syncData.accountsSynced} accounts, ${syncData.transactionsAdded} new transactions.`
+          ? `Synced ${syncData.counts.accounts} accounts, ${syncData.counts.entries} entries.`
           : `Failed to sync: ${syncData.error}`
       );
     },
