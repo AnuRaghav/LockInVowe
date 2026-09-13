@@ -181,6 +181,15 @@ Onboarding then runs base, conservative, and aggressive forecasts and shows the
 headline result, delivered according to the contract just set. (This lands in
 Phase 4, once the planning engine reads what onboarding collects.)
 
+### Skipping the questions
+
+A founder can skip the interview entirely (from the Connect step) or skip the
+rest of it partway through. Nothing already said is lost: any section with
+conversation that hasn't been consolidated is consolidated then, finished or
+not. Every unanswered question becomes a deferred open item for Sam to raise in
+conversation when it matters (Phase 5). Skipping isn't declining, so personal
+questions are deferred too, and the opt-in still applies when Sam reaches them.
+
 ## Architecture
 
 ### Interview engine
@@ -215,6 +224,13 @@ harness, not a separate agent framework.
 - **Personal answers** are consolidated during the turn they are given, from
   the in-memory text, into personal founder blocks only. The transcript then
   stores a redacted placeholder for both the founder's answer and Sam's reply.
+- **A turn commits or it doesn't.** Tool writes are staged during a turn
+  (`lib/onboarding/turn-buffer.ts`) and saved only when the run completes, so a
+  turn that runs out of budget cannot leave questions marked answered that the
+  founder never saw discussed. Sam's reply is assembled from all the text it
+  wrote during the turn, not only its final message.
+- **No skipping ahead.** A question can only be marked answered if its section
+  was complete or current when the turn began.
 - **Resumable.** `onboarding_sessions` stores the transcript (minus the
   sensitive section), checklist state, deferrals and declines. Leaving and
   returning picks up where the founder left off.

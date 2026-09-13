@@ -1,6 +1,7 @@
 import type { AssumptionKey } from "@/lib/company/assumptions";
 import type { CompanyProfile } from "@/lib/company/profile";
 import type { CommunicationContractStore } from "@/lib/founder/contract";
+import type { OnboardingSectionId } from "@/lib/onboarding/checklist";
 import type { OnboardingFacts } from "@/lib/onboarding/facts";
 import type { OnboardingSessionStore } from "@/lib/onboarding/sessions";
 
@@ -27,6 +28,12 @@ export interface OnboardingCapability {
   };
   /** What the connected accounts show, for deciding which questions apply. */
   facts: OnboardingFacts;
+  /**
+   * Sections whose questions may be marked answered this turn: those complete
+   * or current when the turn began. A section opened mid-turn has not been
+   * asked about yet. When absent, the session's current state is used.
+   */
+  answerableSections?: OnboardingSectionId[];
 }
 
 export const isOnboardingCapability = (value: unknown): value is OnboardingCapability => {

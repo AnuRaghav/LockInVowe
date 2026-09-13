@@ -102,7 +102,7 @@ describe("onboarding tools", () => {
   it("records stated preferences but only lets detail and fluency be inferred", async () => {
     const stated = parse(
       await recordFounderPreferenceTool.invoke(
-        { patch: { badNews: "lead_with_it" }, basis: "stated", questionId: "bad-news" },
+        { patch: { badNews: "lead_with_it" }, basis: "stated" },
         config
       )
     );
@@ -154,6 +154,40 @@ describe("onboarding tools", () => {
     const session = await sessions.getCurrent(IDENTITY);
     expect(session!.checklist[sectionEntryKey("company-basics")]).toMatchObject({ state: "complete" });
     expect(session!.checklist[questionEntryKey("customer-concentration")]).toMatchObject({ state: "unsure" });
+  });
+
+  it("refuses to mark a question answered in a section the founder has not reached", async () => {
+    const early = parse(await markQuestionTool.invoke({ questionIds: ["monthly-spend"], state: "answered" }, config));
+    expect(early).toMatchObject({ ok: false, error: expect.stringContaining("monthly-spend") });
+
+    const viaRecord = parse(
+      await recordAssumptionTool.invoke({ key: "monthly_expenses_usd", value: 40_000, questionId: "monthly-spend" }, config)
+    );
+    expect(viaRecord.ok).toBe(false);
+    expect(assumptions.size).toBe(0);
+
+    const deferred = parse(await markQuestionTool.invoke({ questionIds: ["monthly-spend"], state: "deferred" }, config));
+    expect(deferred.ok).toBe(true);
+  });
+
+  it("holds a section opened mid-turn to the sections answerable when the turn began", async () => {
+    const onboarding = config.context.onboarding as OnboardingCapability;
+    const turnConfig = { context: { ...config.context, onboarding: { ...onboarding, answerableSections: ["company-basics"] } } };
+
+    await markQuestionTool.invoke(
+      {
+        questionIds: ["what-you-sell", "pricing-and-billing", "current-revenue", "gross-margin", "customer-concentration"],
+        state: "answered",
+      },
+      turnConfig
+    );
+    await completeSectionTool.invoke({ sectionId: "company-basics" }, turnConfig);
+
+    const sameTurn = parse(
+      await markQuestionTool.invoke({ questionIds: ["last-raise-and-other-cash"], state: "answered" }, turnConfig)
+    );
+    expect(sameTurn.ok).toBe(false);
+    expect((await progress()).questions["last-raise-and-other-cash"]).toBeUndefined();
   });
 
   it("offers quick replies only for questions that have them", async () => {

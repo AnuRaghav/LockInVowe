@@ -3,16 +3,18 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { CompanyProfile, StoredCompanyProfile } from "@/lib/company/profile";
 import { InvalidAssumptionError } from "@/lib/company/assumptions";
 import { InMemoryCommunicationContractStore, InMemoryFounderBlockStore } from "@/lib/founder/in-memory";
-import { ONBOARDING_SECTIONS, sectionEntryKey } from "@/lib/onboarding/checklist";
+import { ONBOARDING_QUESTIONS, ONBOARDING_SECTIONS, questionEntryKey, sectionEntryKey } from "@/lib/onboarding/checklist";
 import { InMemoryOnboardingSessionStore } from "@/lib/onboarding/in-memory";
 import {
   OnboardingNotReadyError,
   completeOnboarding,
   correctPlayback,
   loadOnboardingPlayback,
+  skipOnboarding,
   type PlaybackDeps,
 } from "@/lib/onboarding/playback";
-import { InMemorySemanticBlockStore } from "@/lib/semantic/in-memory";
+import { InMemorySemanticBlockStore, InMemorySemanticInteractionStore } from "@/lib/semantic/in-memory";
+import { createScriptedSemanticProposer } from "@/lib/semantic/update/proposer";
 
 const IDENTITY = { founderId: "founder-a", companyId: "company-a" };
 const at = "2026-09-14T09:00:00Z";
@@ -143,5 +145,41 @@ describe("onboarding playback", () => {
     expect(result.openItems).toBeGreaterThan(0);
     expect(completedAt).toBe("2026-09-14T10:00:00.000Z");
     expect(await sessions.getCurrent(IDENTITY)).toBeNull();
+  });
+
+  it("skips the rest of the interview, keeping what was said and deferring everything else", async () => {
+    const session = await sessions.start(IDENTITY);
+    await sessions.record(IDENTITY, session.id, {
+      messages: [
+        { role: "sam", text: "What do you sell, and to whom?", sectionId: "company-basics", at },
+        { role: "founder", text: "Scheduling software for independent clinics.", sectionId: "company-basics", at },
+      ],
+      checklist: { [questionEntryKey("what-you-sell")]: { state: "answered", at } },
+    });
+
+    const result = await skipOnboarding(IDENTITY, {
+      ...deps,
+      semanticInteractions: new InMemorySemanticInteractionStore(),
+      semanticProposer: createScriptedSemanticProposer([
+        {
+          assessment: "The founder described the company.",
+          operations: [{ op: "create", key: "company-overview", title: "Company overview", body: "Scheduling software for independent clinics." }],
+        },
+      ]),
+    });
+
+    expect(result.extractions).toEqual([expect.objectContaining({ sectionId: "company-basics", status: "applied" })]);
+    expect(result.openItems).toBe(ONBOARDING_QUESTIONS.length - 1);
+    expect(completedAt).toBe("2026-09-14T10:00:00.000Z");
+    expect(await sessions.getCurrent(IDENTITY)).toBeNull();
+    expect(await semanticStore.getBlock({ companyId: IDENTITY.companyId }, { key: "company-overview" })).not.toBeNull();
+  });
+
+  it("skips before the interview has even started", async () => {
+    const result = await skipOnboarding(IDENTITY, deps);
+
+    expect(result.extractions).toEqual([]);
+    expect(result.openItems).toBe(ONBOARDING_QUESTIONS.length);
+    expect(completedAt).not.toBeNull();
   });
 });
