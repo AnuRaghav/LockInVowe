@@ -85,13 +85,19 @@ class ScriptedModel extends FakeToolCallingModel {
   }
 }
 
+/** Test fixtures are not a layer, so they all classify the same way. */
+const TEST_EPISTEMIC = { class: "financial_actual", origin: "test" } as const;
+
 /** Reports what the trusted runtime context actually looked like inside a tool. */
 const probeTool = tool(
   async (_input: Record<string, never>, runtime: RuntimeOf) =>
-    runTool(() => {
-      const context = requireSamContext(runtime, "context_probe");
-      return { companyId: context.companyId, runId: context.runId };
-    }),
+    runTool(
+      () => {
+        const context = requireSamContext(runtime, "context_probe");
+        return { companyId: context.companyId, runId: context.runId };
+      },
+      TEST_EPISTEMIC
+    ),
   {
     name: "context_probe",
     description: "Returns the trusted runtime context this run is scoped to.",
@@ -111,7 +117,7 @@ const createFlakyTool = (failuresBeforeSuccess: number) => {
           throw httpError("upstream unavailable", 503);
         }
         return { attempts };
-      }),
+      }, TEST_EPISTEMIC),
     {
       name: "flaky_lookup",
       description: "Test tool that fails transiently before succeeding.",
@@ -120,13 +126,13 @@ const createFlakyTool = (failuresBeforeSuccess: number) => {
   );
 };
 
-const hugeResultTool = tool(async () => runTool(() => ({ blob: "x".repeat(20_000) })), {
+const hugeResultTool = tool(async () => runTool(() => ({ blob: "x".repeat(20_000) }), TEST_EPISTEMIC), {
   name: "huge_result",
   description: "Test tool that returns more than the context can afford.",
   schema: z.object({}),
 });
 
-const writeTool = tool(async () => runTool(() => ({ written: true })), {
+const writeTool = tool(async () => runTool(() => ({ written: true }), TEST_EPISTEMIC), {
   name: "write_thing",
   description: "Test tool that changes company state.",
   schema: z.object({}),
@@ -545,13 +551,17 @@ describe("Sam execution harness", () => {
       });
 
       expect(result.outcome).toBe("completed");
-      expect(result.initialContext.memories.map((memory) => memory.id)).toContain(
+      expect(result.initialContext.directory?.entries.map((entry) => entry.id)).toContain(
         "mem_runway_floor"
       );
       expect(result.run.contextBudget).toMatchObject({
-        memoryCount: result.initialContext.memories.length,
+        directoryEntryCount: result.initialContext.directory?.entries.length,
+        directoryTruncated: false,
         withinBudget: true,
       });
+      // The transcript is measured, not ignored - it is the component that grows.
+      expect(result.run.contextBudget!.transcriptMessageCount).toBe(1);
+      expect(result.run.contextBudget!.transcriptChars).toBeGreaterThan(0);
       expect(result.run.contextBudget!.systemPromptChars).toBeGreaterThan(0);
       expect(result.run.contextBudget!.estimatedTokens).toBeGreaterThan(0);
     });
@@ -571,7 +581,7 @@ describe("Sam execution harness", () => {
 
       expect(result.outcome).toBe("completed");
       expect(result.degraded).toBe(true);
-      expect(result.initialContext.memories).toEqual([]);
+      expect(result.initialContext.directory).toBeNull();
       expect(result.failures[0]).toMatchObject({
         stage: "context",
         critical: false,

@@ -87,12 +87,29 @@ export function financialComparison(reconciled: ReconciledFinancialState, curren
     operatingBurnTrend: result.operatingBurnTrend, caveats: result.caveats };
 }
 
+/**
+ * Which providers are connected, and whether each is telling us anything.
+ *
+ * Counts alone ("3 connections, 1 unhealthy") cannot distinguish a company with
+ * no payroll provider from one whose payroll provider broke, so Sam could not
+ * answer "how fresh is this?" or "what data do you actually have?" without
+ * spending a tool call on it. Every field here is already loaded by
+ * reconciliation; this is a projection, not a read.
+ *
+ * `last_sync_error` is deliberately excluded - it is provider error text, which
+ * is exactly the sort of string that must not reach a model context.
+ */
+const connectionInventory = (actuals: FinancialActuals) =>
+  actuals.health.connections.map(c => ({ provider: c.provider, status: c.status,
+    lastSuccessfulSyncAt: c.last_synced_at, stale: c.stale, caveats: c.caveats }));
+
 /** A bounded company brief, never a ledger or raw provider content in the system prompt. */
 export function financialSnapshot(actuals: FinancialActuals) {
   return { status: actuals.currencies.length ? "qualified" as const : "no_eligible_accounts" as const,
     evaluatedAt: actuals.evaluatedAt, coverage: actuals.health.coverage,
     sourceConnections: actuals.health.connections.length,
     unhealthyConnections: actuals.health.connections.filter(c => c.stale || c.status !== "active").length,
+    connections: connectionInventory(actuals),
     duplicateAccountRisk: actuals.health.duplicateAccountRisk,
     currenciesOmitted: Math.max(0, actuals.currencies.length - 2),
     currencies: actuals.currencies.slice(0, 2).map(state => ({
@@ -110,7 +127,7 @@ export function financialSnapshot(actuals: FinancialActuals) {
     caveats: ["observed_linked_accounts_not_complete_company_coverage", "recorded_cash_movement_not_operating_burn_or_balance_change",
       "balance_value_change_time_not_last_check", "no_fx_conversion", "no_future_commitments_modeled",
       "Rho_lifecycle_changes_outside_14_day_lookback_may_be_missing", "history_completeness_unknown", "source_currency_may_default_to_USD"],
-    more: "Use actuals tools for observed position/history and evidence. For future questions, retrieve relevant plans/constraints, then use forecast_cash, simulate_financial_scenario, or compare_financial_scenarios with explicit basis-labelled assumptions; connected starting cash cannot be overridden.",
+    more: "Use actuals tools for observed position/history and evidence, and explain_financial_number to prove any figure here. For future questions, retrieve relevant plans/constraints with get_company_plan or the memory tools, then use forecast_cash, simulate_financial_scenario, or compare_financial_scenarios with explicit basis-labelled assumptions; connected starting cash cannot be overridden. Providers absent from `connections` supply nothing: their data is missing, not zero.",
   };
 }
 export type FinancialSnapshot = ReturnType<typeof financialSnapshot> | { status: "unavailable"; reason: string };

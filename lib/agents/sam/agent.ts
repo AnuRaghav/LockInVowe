@@ -203,7 +203,8 @@ const emptyContext = (companyId: string): SamInitialContext => ({
   companyId,
   thread: null,
   brief: null,
-  memories: [],
+  directory: null,
+  operating: null,
   numerical: { status: "unavailable", reason: "context_not_loaded" },
 });
 
@@ -263,6 +264,9 @@ export const prepareSamRun = async (
     measureSamContext({
       systemPrompt,
       initialContext,
+      // The transcript is part of what model call 1 is sent, so it is part of
+      // what the budget has to account for.
+      messages: history,
       maxChars: policy.maxContextChars,
     })
   );

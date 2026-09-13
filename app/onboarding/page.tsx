@@ -244,9 +244,67 @@ export default function OnboardingPage() {
                   actually matters.
                 </p>
               </div>
-              <div className="flex justify-end border-t border-border pt-5">
-                <Link href="/" className={pillPrimary}>
-                  Back to home
+
+              <div className="grid gap-6 sm:grid-cols-2">
+                <section>
+                  <h2 className="text-[13px] text-muted-2">Observed from your connections</h2>
+                  <dl className="mt-3 flex flex-col">
+                    <div className="flex items-baseline justify-between gap-3 border-b border-border py-2.5">
+                      <dt className="text-sm text-muted">Cash on hand</dt>
+                      <dd className="text-[15px] font-medium tabular-nums text-foreground">
+                        {cashOnHandUsd !== null ? usd(cashOnHandUsd) : "Not connected"}
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-3 border-b border-border py-2.5">
+                      <dt className="text-sm text-muted">Monthly payroll</dt>
+                      <dd className="text-[15px] font-medium tabular-nums text-foreground">
+                        {payrollUsd !== null ? usd(payrollUsd) : "Not connected"}
+                      </dd>
+                    </div>
+                    {preview?.runwayMonths != null && (
+                      <div className="flex items-baseline justify-between gap-3 py-2.5">
+                        <dt className="text-sm text-muted">Runway today</dt>
+                        <dd className="text-[15px] font-medium tabular-nums text-foreground">
+                          {preview.runwayMonths} months
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </section>
+                <section>
+                  <h2 className="text-[13px] text-muted-2">Assumptions from you</h2>
+                  <dl className="mt-3 flex flex-col">
+                    {[
+                      ["MRR", usd(parsedMrr)],
+                      ["Monthly expenses", payrollUsd !== null ? `${usd(parsedExpenses)} incl. payroll` : usd(parsedExpenses)],
+                      ["Growth target", `${Number(monthlyGrowthTargetPct) || 0}% / mo`],
+                      ["Runway floor", `${parsedFloor} months`],
+                      ...(team !== null ? [["Current team", `${team.length} people`]] : []),
+                      ["Planned hires", String(plannedHires.length)],
+                    ].map(([k, v], i, arr) => (
+                      <div
+                        key={k}
+                        className={cn(
+                          "flex items-baseline justify-between gap-3 py-2.5",
+                          i < arr.length - 1 && "border-b border-border",
+                        )}
+                      >
+                        <dt className="text-sm text-muted">{k}</dt>
+                        <dd className="text-[15px] font-medium tabular-nums text-foreground">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              </div>
+
+              <div className="flex flex-wrap justify-between gap-3 border-t border-border pt-5">
+                <button type="button" onClick={() => setStep("questions")} className={pillSecondary}>
+                  Edit answers
+                </button>
+                {/* The one way into the conversation workspace: everything above is
+                    the model Sam answers from. /chat itself never requires this. */}
+                <Link href="/chat" className={pillPrimary}>
+                  Talk to Sam
                 </Link>
               </div>
             </BlurFade>
