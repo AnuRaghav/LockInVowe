@@ -43,5 +43,7 @@ next-env.d.ts
 
 # claude code
 .claude/
+!.claude/project-context/
+!.claude/project-context/**
 skills-lock.json
 .env*.local
