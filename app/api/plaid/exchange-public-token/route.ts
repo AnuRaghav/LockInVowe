@@ -14,7 +14,12 @@ export const runtime = "nodejs";
  * after this point is provider-neutral: sync runs through /api/source/sync.
  */
 export async function POST(req: Request) {
-  const { companyId } = resolveCompanyContext(req);
+  let companyId: string;
+  try {
+    companyId = (await resolveCompanyContext(req)).companyId;
+  } catch {
+    return Response.json({ error: "Sign in required." }, { status: 401 });
+  }
   const body = await req.json().catch(() => null);
   const publicToken = body?.publicToken;
   const institutionName = body?.institutionName ?? null;

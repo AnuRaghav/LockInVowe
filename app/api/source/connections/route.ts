@@ -8,7 +8,12 @@ export const runtime = "nodejs";
 
 /** Lists this company's source connections. Credentials are never returned. */
 export async function GET(req: Request) {
-  const { companyId } = resolveCompanyContext(req);
+  let companyId: string;
+  try {
+    companyId = (await resolveCompanyContext(req)).companyId;
+  } catch {
+    return Response.json({ error: "Sign in required." }, { status: 401 });
+  }
   const supabase = createServiceClient();
 
   const { data, error } = await supabase
@@ -36,7 +41,12 @@ export async function GET(req: Request) {
  * per-provider while everything downstream of it is not.
  */
 export async function POST(req: Request) {
-  const { companyId } = resolveCompanyContext(req);
+  let companyId: string;
+  try {
+    companyId = (await resolveCompanyContext(req)).companyId;
+  } catch {
+    return Response.json({ error: "Sign in required." }, { status: 401 });
+  }
   const body = await req.json().catch(() => null);
 
   if (body?.provider === "stripe") {

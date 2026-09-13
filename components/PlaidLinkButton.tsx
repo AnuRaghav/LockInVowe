@@ -11,26 +11,58 @@ interface PlaidLinkButtonProps {
   onLinked?: () => void;
 }
 
+/** Where the in-flight link_token is parked across an OAuth redirect. */
+const LINK_TOKEN_STORAGE_KEY = "plaid_link_token";
+
 /**
- * Minimal end-to-end Plaid Link flow: fetch a link token, open Plaid Link,
- * exchange the resulting public token, then trigger one sync through the
- * provider-neutral /api/source/sync route. Exists to exercise the connector
- * manually - swap for the real onboarding UI once that flow is designed.
+ * True once the browser has come back from an OAuth institution's redirect.
+ * Plaid appends this query param to whatever `redirect_uri` was configured
+ * in the link_token - see app/api/plaid/create-link-token/route.ts.
+ */
+const isOAuthResumption = () =>
+  typeof window !== "undefined" && window.location.search.includes("oauth_state_id=");
+
+/**
+ * End-to-end Plaid Link flow: fetch a link token, open Plaid Link, exchange
+ * the resulting public token, then trigger one sync through the
+ * provider-neutral /api/source/sync route.
+ *
+ * Also handles OAuth institutions (most large US banks): those send the
+ * browser away to the bank and back to `PLAID_REDIRECT_URI` mid-flow. This
+ * component renders on that redirect page too (see app/plaid-oauth/page.tsx)
+ * and, when it detects the return trip, resumes the *same* Link session
+ * instead of starting a new one - Plaid rejects a fresh token here.
  */
 export const PlaidLinkButton = ({ className, onLinked }: PlaidLinkButtonProps) => {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [resuming] = useState(isOAuthResumption);
 
   useEffect(() => {
+    if (resuming) {
+      const stored = sessionStorage.getItem(LINK_TOKEN_STORAGE_KEY);
+      if (stored) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- resuming an external session on mount, not a derived-state sync
+        setLinkToken(stored);
+      } else {
+        setStatus("Lost track of that connection attempt - go back and try again.");
+      }
+      return;
+    }
+
     fetch("/api/plaid/create-link-token", { method: "POST" })
       .then((res) => res.json())
-      .then((data) => setLinkToken(data.linkToken ?? null))
+      .then((data) => {
+        if (data.linkToken) sessionStorage.setItem(LINK_TOKEN_STORAGE_KEY, data.linkToken);
+        setLinkToken(data.linkToken ?? null);
+      })
       .catch(() => setStatus("Couldn't reach Plaid. Refresh the page to try again."));
-  }, []);
+  }, [resuming]);
 
   const onSuccess: PlaidLinkOnSuccess = useCallback(
     async (publicToken, metadata) => {
+      sessionStorage.removeItem(LINK_TOKEN_STORAGE_KEY);
       setBusy(true);
       setStatus("Linking account…");
 
@@ -72,7 +104,26 @@ export const PlaidLinkButton = ({ className, onLinked }: PlaidLinkButtonProps) =
   const { open, ready } = usePlaidLink({
     token: linkToken ?? "",
     onSuccess,
+    ...(resuming && typeof window !== "undefined"
+      ? { receivedRedirectUri: window.location.href }
+      : {}),
   });
+
+  // Resuming after OAuth has no user-facing "click to connect" step - Link
+  // reopens itself to the point the bank redirect interrupted.
+  useEffect(() => {
+    if (resuming && ready) open();
+  }, [resuming, ready, open]);
+
+  if (resuming) {
+    return (
+      <div className={cn("flex flex-col items-start gap-2", className)}>
+        <p role="status" aria-live="polite" className="text-[13px] text-muted">
+          {status || "Finishing connection…"}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex flex-col items-start gap-2", className)}>

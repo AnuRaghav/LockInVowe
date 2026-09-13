@@ -26,10 +26,18 @@ const flow = [
 export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
-      <header className="mx-auto flex h-16 w-full max-w-6xl items-center px-6">
+      <header className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
         <Link href="/" aria-label="Sam home" className="inline-flex shrink-0 items-center">
           <SamLogo />
         </Link>
+        <form action="/auth/sign-out" method="post">
+          <button
+            type="submit"
+            className="text-[13px] text-muted underline underline-offset-4 hover:text-foreground"
+          >
+            Sign out
+          </button>
+        </form>
       </header>
 
       <main className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 pb-16 pt-8 md:grid-cols-[1.05fr_1fr] md:gap-8 md:pt-4">
