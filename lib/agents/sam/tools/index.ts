@@ -3,6 +3,7 @@ import type { ClientTool } from "@langchain/core/tools";
 import { financialPositionTool, financialCashFlowTool, financialBurnRunwayTool,
   financialComparisonTool, financialTraceTool, forecastCashTool,
   simulateFinancialScenarioTool, compareFinancialScenariosTool } from "@/lib/agents/sam/tools/financial";
+import { createChartTool } from "@/lib/agents/sam/tools/charts";
 import {
   getMemoryHistoryTool,
   getMemoryTool,
@@ -24,6 +25,7 @@ export const SAM_TOOLS: ClientTool[] = [
   searchMemoryTool,
   getMemoryTool,
   getMemoryHistoryTool,
+  createChartTool,
 ];
 
 export {
@@ -33,4 +35,5 @@ export {
   getMemoryHistoryTool,
   getMemoryTool,
   searchMemoryTool,
+  createChartTool,
 };

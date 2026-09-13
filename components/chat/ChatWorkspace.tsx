@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { List } from "@phosphor-icons/react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { List, SidebarSimple } from "@phosphor-icons/react";
 
 import { Composer } from "@/components/chat/Composer";
 import { EmptyConversation, MessageList, type ChatNotice, type RunView } from "@/components/chat/MessageList";
@@ -10,12 +10,48 @@ import { applyActivityEvent, summarizeActivity, type ActivityStep } from "@/lib/
 import {
   ChatRequestError,
   createThread,
+  deleteThread,
   listThreads,
   loadThread,
+  renameThread,
   sendMessage,
   type ChatMessage,
   type ChatThread,
 } from "@/lib/chat/client";
+
+const SIDEBAR_COLLAPSED_KEY = "sam.sidebarCollapsed";
+const DESKTOP_QUERY = "(min-width: 768px)";
+
+/** Collapsing is a desktop idea; below md the sidebar is a drawer regardless. */
+const subscribeDesktop = (onChange: () => void) => {
+  const query = window.matchMedia(DESKTOP_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+
+/** The collapsed preference, remembered per browser. Storage failures just mean "open". */
+const collapsedListeners = new Set<() => void>();
+const readCollapsed = () => {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+const writeCollapsed = (collapsed: boolean) => {
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch {
+    // Not remembered; the in-memory fallback below still toggles it.
+  }
+  memoryCollapsed = collapsed;
+  collapsedListeners.forEach((listener) => listener());
+};
+let memoryCollapsed: boolean | null = null;
+const subscribeCollapsed = (onChange: () => void) => {
+  collapsedListeners.add(onChange);
+  return () => collapsedListeners.delete(onChange);
+};
 
 /** Terminal outcomes the harness reports, said plainly and without blame. */
 const TERMINATION_NOTICE: Record<string, ChatNotice> = {
@@ -76,6 +112,12 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const desktop = useSyncExternalStore(subscribeDesktop, () => window.matchMedia(DESKTOP_QUERY).matches, () => false);
+  const sidebarCollapsed = useSyncExternalStore(
+    subscribeCollapsed,
+    () => memoryCollapsed ?? readCollapsed(),
+    () => false,
+  );
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(initialThreadId ?? null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -103,6 +145,8 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
       runAbort.current?.abort();
     };
   }, []);
+
+  const toggleSidebarCollapsed = () => writeCollapsed(!sidebarCollapsed);
 
   const refreshThreads = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -194,6 +238,33 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
       setNotice(requestNotice(error));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const rename = async (threadId: string, name: string) => {
+    const previous = threads;
+    // Optimistic: the name changes as the input closes, and reverts if the save fails.
+    setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, name } : thread)));
+    try {
+      const saved = await renameThread(threadId, name);
+      setThreads((current) => current.map((thread) => (thread.id === threadId ? saved : thread)));
+    } catch (error) {
+      setThreads(previous);
+      setNotice(requestNotice(error));
+    }
+  };
+
+  const remove = async (threadId: string) => {
+    try {
+      await deleteThread(threadId);
+      setThreads((current) => current.filter((thread) => thread.id !== threadId));
+      if (threadId === activeThreadId) {
+        setSummaries({});
+        setNotice(null);
+        setActiveThreadId(null);
+      }
+    } catch (error) {
+      setNotice(requestNotice(error));
     }
   };
 
@@ -316,7 +387,8 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
           ]);
         }
       }
-      if (!threads.some((thread) => thread.id === threadId)) void refreshThreads();
+      // Always re-list: a first message names the thread server-side.
+      void refreshThreads();
     } else {
       // Nothing reached the server, so nothing was persisted either.
       setMessages((current) => current.filter((message) => !message.id.startsWith("pending-")));
@@ -340,9 +412,13 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
         creating={creating}
         locked={run !== null}
         open={sidebarOpen}
+        collapsed={desktop && sidebarCollapsed}
         onClose={() => setSidebarOpen(false)}
+        onToggleCollapsed={toggleSidebarCollapsed}
         onSelect={select}
         onCreate={startNewThread}
+        onRename={rename}
+        onDelete={remove}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -355,6 +431,17 @@ export function ChatWorkspace({ initialThreadId }: { initialThreadId?: string })
           >
             <List className="h-[18px] w-[18px]" />
           </button>
+          {desktop && sidebarCollapsed && (
+            <button
+              type="button"
+              onClick={toggleSidebarCollapsed}
+              aria-label="Show sidebar"
+              title="Show sidebar"
+              className="-ml-2 hidden h-9 w-9 flex-none items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-foreground md:inline-flex"
+            >
+              <SidebarSimple className="h-[18px] w-[18px]" />
+            </button>
+          )}
           <h1 className="truncate text-[15px] font-medium text-foreground">
             {activeThread ? threadLabel(activeThread) : "New conversation"}
           </h1>

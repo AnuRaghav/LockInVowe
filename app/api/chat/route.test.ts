@@ -32,7 +32,12 @@ vi.mock("@/lib/company/context", () => {
     },
   };
 });
-vi.mock("@/lib/conversations/store", () => ({
+vi.mock("@/lib/conversations/charts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/conversations/charts")>()),
+  createConversationChartStore: () => ({ listForThread: async () => [] }),
+}));
+vi.mock("@/lib/conversations/store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/conversations/store")>()),
   ConversationError: class ConversationError extends Error { constructor(message: string, readonly status: number) { super(message); } },
   createConversationStore: () => ({
     async createThread(_companyId: string, name?: string) {
@@ -60,6 +65,10 @@ vi.mock("@/lib/conversations/store", () => ({
     async load(_companyId: string, id: string) {
       const thread = state.threads.get(id);
       return thread ? { thread: { id: thread.id, name: thread.name, createdAt: thread.createdAt }, messages: thread.messages, runs: thread.runs } : null;
+    },
+    async nameThreadIfUnnamed(_companyId: string, id: string, name: string) {
+      const thread = state.threads.get(id);
+      if (thread && !thread.name) thread.name = name;
     },
     async finish(_companyId: string, runId: string, status: string, content?: string) {
       const thread = [...state.threads.values()].find((candidate) => candidate.runs.some((run) => run.id === runId))!;

@@ -1,3 +1,4 @@
+import type { ChartSpec } from "@/lib/charts/spec";
 import { createStreamParser, type ChatStreamEvent } from "@/lib/chat/stream";
 
 /**
@@ -19,6 +20,13 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  /** Charts Sam drew for this answer, as the series to plot. */
+  charts?: ChatChart[];
+}
+
+export interface ChatChart {
+  id: string;
+  spec: ChartSpec;
 }
 
 export class ChatRequestError extends Error {
@@ -46,6 +54,18 @@ export const listThreads = async (signal?: AbortSignal): Promise<ChatThread[]> =
 export const createThread = async (): Promise<ChatThread> => {
   const body = (await request("/api/threads", { method: "POST" })) as { thread: ChatThread };
   return body.thread;
+};
+
+export const renameThread = async (threadId: string, name: string): Promise<ChatThread> => {
+  const body = (await request(`/api/threads/${threadId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  })) as { thread: ChatThread };
+  return body.thread;
+};
+
+export const deleteThread = async (threadId: string): Promise<void> => {
+  await request(`/api/threads/${threadId}`, { method: "DELETE" });
 };
 
 export const loadThread = async (

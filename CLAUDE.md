@@ -54,6 +54,9 @@
 - ✅ Source Layer: provider-neutral schema + Plaid and Rho adapters (`lib/source/`)
 - ✅ Semantic Company Model: durable semantic blocks + revision history, the
   semantic updater, and the company brief (`lib/semantic/`)
+- ✅ Charts in chat: Sam's `create_chart` tool stores series against the turn
+  and the chat draws them (`lib/charts/`, `components/chat/ChartFigure.tsx`)
+- 🟡 Hex API: typed client from Hex's OpenAPI spec (`lib/hex/`), not used yet
 - ❌ Numerical Model (not started)
 - ❌ Onboarding flow (not started)
 - ❌ Forecasting engine (not started)

@@ -3,10 +3,11 @@
 import type { ReactNode } from "react";
 
 import { ActivitySummary, ActivityTrail } from "@/components/chat/ActivityTrail";
+import { ChartFigure } from "@/components/chat/ChartFigure";
 import { Markdown } from "@/components/chat/Markdown";
 import { SamOrb } from "@/components/SamOrb";
 import { currentActivity, summarizeActivity, type ActivityStep } from "@/lib/chat/activity";
-import type { ChatMessage } from "@/lib/chat/client";
+import type { ChatChart, ChatMessage } from "@/lib/chat/client";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,11 +31,13 @@ function SamTurn({
   summary,
   pending = false,
   footer,
+  charts = [],
 }: {
   content: string;
   summary?: string | null;
   pending?: boolean;
   footer?: ReactNode;
+  charts?: ChatChart[];
 }) {
   return (
     <div className="flex flex-col gap-2.5">
@@ -49,6 +52,9 @@ function SamTurn({
           />
         )}
       </div>
+      {charts.map((chart) => (
+        <ChartFigure key={chart.id} spec={chart.spec} />
+      ))}
       {footer}
     </div>
   );
@@ -126,7 +132,12 @@ export function MessageList({
         message.role === "user" ? (
           <UserTurn key={message.id} content={message.content} />
         ) : (
-          <SamTurn key={message.id} content={message.content} summary={summaries[message.id]} />
+          <SamTurn
+            key={message.id}
+            content={message.content}
+            summary={summaries[message.id]}
+            charts={message.charts}
+          />
         ),
       )}
       {run && <ActiveTurn run={run} />}

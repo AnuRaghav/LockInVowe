@@ -16,7 +16,9 @@
     "db:migration": "supabase migration new",
     "db:migrate": "supabase migration up --local",
     "db:reset": "supabase db reset --local",
-    "db:types": "supabase gen types typescript --local --schema public > lib/supabase/types.ts"
+    "db:types": "supabase gen types typescript --local --schema public > lib/supabase/types.ts",
+    "hex:spec": "curl -fsSL https://static.hex.site/openapi.json -o lib/hex/openapi.json",
+    "hex:types": "openapi-typescript lib/hex/openapi.json -o lib/hex/schema.d.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^0.0.50",
@@ -31,10 +33,12 @@
     "langchain": "^1.5.11",
     "motion": "^13.2.0",
     "next": "16.3.5",
+    "openapi-fetch": "^0.17.0",
     "plaid": "^47.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-plaid-link": "^5.0.0",
+    "recharts": "^3.10.1",
     "stripe": "^22.6.2",
     "tailwind-merge": "^3.7.0",
     "zod": "^3.25.76"
@@ -46,6 +50,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.5",
+    "openapi-typescript": "^7.13.0",
     "supabase": "2.117.0",
     "tailwindcss": "^4",
     "typescript": "^5",
