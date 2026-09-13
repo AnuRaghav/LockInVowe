@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
 import { SamOrb } from "@/components/SamOrb";
 import { useVoicePlayback } from "@/components/chat/VoicePlayback";
+import { cn } from "@/lib/utils";
 
 type Session = { controller: AbortController; stream?: MediaStream; recorder?: MediaRecorder; timer?: ReturnType<typeof setTimeout> };
 
-export function VoiceInput({ disabled, running, onStop, onTranscript }: {
-  disabled: boolean; running: boolean; onStop: () => void; onTranscript: (text: string) => void;
+export function VoiceInput({ disabled, running, onStop, onTranscript, variant = "dock" }: {
+  disabled: boolean; running: boolean; onStop: () => void; onTranscript: (text: string) => void; variant?: "dock" | "hero";
 }) {
   const { playback, error: playbackError, stop: stopPlayback } = useVoicePlayback();
   const [state, setState] = useState<"idle" | "starting" | "recording" | "transcribing">("idle");
@@ -55,7 +56,7 @@ export function VoiceInput({ disabled, running, onStop, onTranscript }: {
     setState("starting");
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-        throw new Error("Recording is not supported here. Use a supported browser over HTTPS, or type instead.");
+        throw new Error("Recording is not supported here. Use a supported browser over HTTPS.");
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       current.stream = stream;
@@ -72,7 +73,7 @@ export function VoiceInput({ disabled, running, onStop, onTranscript }: {
           cancel();
         } else if (event.data.size) chunks.push(event.data);
       };
-      recorder.onerror = () => { setError("Recording failed. Please try again or type instead."); cancel(); };
+      recorder.onerror = () => { setError("Recording failed. Please try again."); cancel(); };
       recorder.onstop = async () => {
         release(current);
         if (current.controller.signal.aborted) return;
@@ -93,7 +94,7 @@ export function VoiceInput({ disabled, running, onStop, onTranscript }: {
       };
       recorder.start(1000);
       setState("recording");
-      // Short dictation only; stop and transcribe after two minutes.
+      // Stop and transcribe after two minutes to cap uploads and speech-to-text cost.
       current.timer = setTimeout(() => { if (recorder.state === "recording") recorder.stop(); }, 120000);
     } catch (error) {
       release(current);
@@ -101,30 +102,34 @@ export function VoiceInput({ disabled, running, onStop, onTranscript }: {
         session.current = null;
         setState("idle");
         setError(error instanceof Error && error.name === "NotAllowedError"
-          ? "Microphone access denied. Allow access and retry, or type instead."
+          ? "Microphone access denied. Allow access and retry."
           : error instanceof Error ? error.message : "Could not start recording.");
       }
     }
   };
 
-  const label = playback ? (playback.state === "speaking" ? "Speaking · tap to stop" : "Loading audio · tap to cancel")
-    : running ? "Sam is working · tap to stop"
-    : state === "recording" ? "Listening · tap to transcribe"
-    : state === "transcribing" ? "Transcribing · tap to cancel"
-    : state === "starting" ? "Opening microphone · tap to cancel" : "Tap Sam to speak";
-  const action = playback ? "Stop audio" : running ? "Stop Sam" : state === "recording" ? "Stop recording and transcribe"
-    : state !== "idle" ? "Cancel voice input" : "Record voice message";
-  const energy = playback?.state === "speaking" ? 1 : state === "recording" ? 0.8 : running ? 0.6 : state !== "idle" || playback ? 0.4 : 0.1;
+  const label = playback ? (playback.state === "speaking" ? "Sam is speaking · tap to stop" : "Loading Sam's voice · tap to cancel")
+    : running ? "Sam is thinking · tap to stop"
+    : state === "recording" ? "Listening · tap when you're done"
+    : state === "transcribing" ? "Sending your voice to Sam…"
+    : state === "starting" ? "Opening microphone…" : "Tap Sam and ask out loud";
+  const action = playback ? "Stop audio" : running ? "Stop Sam" : state === "recording" ? "Stop recording and ask Sam"
+    : state !== "idle" ? "Cancel voice input" : "Ask Sam by voice";
+  const energy = playback?.state === "speaking" ? 1 : state === "recording" ? 0.85 : running ? 0.65 : state !== "idle" || playback ? 0.45 : 0.16;
+  const hero = variant === "hero";
 
-  return <div className="mb-2 flex items-center gap-2 px-1">
+  return <div className={cn("flex items-center gap-3", hero ? "flex-col text-center" : "mb-2 px-1")}>
     <button type="button" disabled={disabled && state === "idle" && !playback && !running}
       onClick={() => playback ? stopPlayback() : running ? onStop() : state === "recording" ? session.current?.recorder?.stop() : state !== "idle" ? cancel() : void start()}
       aria-label={action} title={label}
-      className="flex-none rounded-full outline-none transition-colors hover:bg-accent/5 focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40">
-      <SamOrb energy={energy} points={360} className="h-16 w-16" />
+      className={cn(
+        "flex-none rounded-full outline-none transition-[background-color,opacity,transform] hover:bg-accent/5 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40",
+        hero && "rounded-[3rem]",
+      )}>
+      <SamOrb energy={energy} points={hero ? 760 : 520} className={hero ? "h-52 w-52 sm:h-64 sm:w-64" : "h-24 w-24"} />
     </button>
-    <div className="flex flex-col gap-1">
-      <span role="status" className="text-xs text-muted">{label}</span>
+    <div className={cn("flex flex-col gap-1", hero && "items-center")}>
+      <span role="status" className={cn("text-muted", hero ? "text-[15px]" : "text-xs")}>{label}</span>
       {error && <span role="alert" className="text-xs text-danger">{error} <button type="button" onClick={() => setError(null)} aria-label="Dismiss voice error">×</button></span>}
       {playbackError && <span role="alert" className="text-xs text-danger">{playbackError}</span>}
     </div>
