@@ -78,7 +78,7 @@ export function InsightCard({ insight, delay = 0, className }: InsightCardProps)
 
       <p className="line-clamp-2 text-[11.5px] leading-snug text-muted">{insight.note}</p>
 
-      <ChartFigure spec={insight.chart} heightClassName="h-24" />
+      <ChartFigure spec={insight.chart} heightClassName="h-24" centered />
 
       <Link
         href="/chat"

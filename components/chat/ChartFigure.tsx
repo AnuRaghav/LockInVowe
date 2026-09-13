@@ -29,7 +29,16 @@ const INK = { muted: "rgba(244, 245, 242, 0.68)", faint: "rgba(244, 245, 242, 0.
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 const exact = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
-export function ChartFigure({ spec, heightClassName = "h-64" }: { spec: ChartSpec; heightClassName?: string }) {
+export function ChartFigure({
+  spec,
+  heightClassName = "h-64",
+  centered = false,
+}: {
+  spec: ChartSpec;
+  heightClassName?: string;
+  /** Centers the caption and legend - the dashboard's cards read better centered than left-aligned like chat's do. */
+  centered?: boolean;
+}) {
   const rows = toChartRows(spec);
   const multiSeries = spec.series.length > 1;
   const withUnit = (value: number) => (spec.yLabel ? `${exact.format(value)} ${spec.yLabel}` : exact.format(value));
@@ -62,7 +71,7 @@ export function ChartFigure({ spec, heightClassName = "h-64" }: { spec: ChartSpe
       {multiSeries && (
         <Legend
           verticalAlign="top"
-          align="left"
+          align={centered ? "center" : "left"}
           height={32}
           iconType="circle"
           iconSize={8}
@@ -76,7 +85,7 @@ export function ChartFigure({ spec, heightClassName = "h-64" }: { spec: ChartSpe
 
   return (
     <figure className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
-      <figcaption className="flex flex-col gap-0.5">
+      <figcaption className={centered ? "flex flex-col items-center gap-0.5 text-center" : "flex flex-col gap-0.5"}>
         <span className="text-[14px] font-medium text-foreground">{spec.title}</span>
         {spec.yLabel && <span className="text-[12.5px] text-muted-2">{spec.yLabel}</span>}
       </figcaption>

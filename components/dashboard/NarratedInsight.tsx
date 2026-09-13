@@ -25,7 +25,7 @@ export function NarratedInsight({ text, className }: { text: string; className?:
 
   return (
     <div className={cn("flex flex-row items-center justify-center gap-3 text-center", className)}>
-      <SamOrb energy={0.6} className="h-9 w-9 shrink-0" />
+      <SamOrb energy={0.6} className="h-20 w-20 shrink-0" />
       <p className="max-w-3xl text-balance text-sm font-medium leading-snug tracking-tight text-foreground sm:text-base">
         {words.map((word, i) =>
           reduceMotion ? (
