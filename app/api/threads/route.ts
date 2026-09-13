@@ -1,9 +1,10 @@
-import { resolveCompanyContext } from "@/lib/company/context";
+import { resolveCompanyContext, UnauthenticatedError } from "@/lib/company/context";
 import { ConversationError, createConversationStore } from "@/lib/conversations/store";
 
 export const runtime = "nodejs";
 
 const failure = (error: unknown): Response => {
+  if (error instanceof UnauthenticatedError) return Response.json({ error: "Sign in required." }, { status: 401 });
   if (error instanceof ConversationError) return Response.json({ error: error.message }, { status: error.status });
   console.error("thread request failed", error);
   return Response.json({ error: "Threads unavailable" }, { status: 500 });
@@ -12,7 +13,7 @@ const failure = (error: unknown): Response => {
 /** List conversations belonging to the request's trusted company scope. */
 export async function GET(req: Request) {
   try {
-    const { companyId } = resolveCompanyContext(req);
+    const { companyId } = await resolveCompanyContext(req);
     return Response.json({ threads: await createConversationStore().listThreads(companyId) });
   } catch (error) {
     return failure(error);
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { companyId } = resolveCompanyContext(req);
+    const { companyId } = await resolveCompanyContext(req);
     const thread = await createConversationStore().createThread(companyId, name);
     return Response.json({ thread }, { status: 201 });
   } catch (error) {

@@ -2,7 +2,7 @@ import { AIMessage, HumanMessage, type BaseMessage } from "@langchain/core/messa
 import { createDataStreamResponse, type JSONValue } from "ai";
 
 import { streamSamAgent, type SamRunEvent, type SamRunOutcome } from "@/lib/agents/sam";
-import { resolveCompanyContext } from "@/lib/company/context";
+import { resolveCompanyContext, UnauthenticatedError } from "@/lib/company/context";
 import { ConversationError, createConversationStore, type Message, type Run } from "@/lib/conversations/store";
 
 export const runtime = "nodejs";
@@ -54,6 +54,7 @@ const unfinishedMessage = (outcome: SamRunOutcome): string => {
 };
 
 const errorResponse = (error: unknown): Response => {
+  if (error instanceof UnauthenticatedError) return Response.json({ error: "Sign in required." }, { status: 401 });
   if (error instanceof ConversationError) return Response.json({ error: error.message }, { status: error.status });
   console.error("conversation request failed", error);
   return Response.json({ error: "Conversation unavailable" }, { status: 500 });
@@ -67,7 +68,15 @@ export async function POST(req: Request) {
   const content = latestUserText(body);
   if (!content) return Response.json({ error: "A user message is required" }, { status: 400 });
   const suppliedThreadId = typeof body.threadId === "string" && body.threadId.trim() ? body.threadId.trim() : undefined;
-  const company = resolveCompanyContext(req);
+
+  let company: { companyId: string };
+  try {
+    // Auth/onboarding owns company identity; conversation input never supplies it.
+    company = await resolveCompanyContext(req);
+  } catch (error) {
+    return errorResponse(error);
+  }
+
   const store = createConversationStore();
   let run: Run | undefined;
 

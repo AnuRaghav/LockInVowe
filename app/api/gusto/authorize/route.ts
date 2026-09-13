@@ -11,7 +11,12 @@ import {
  * (`?returnTo=/onboarding` or `/connect`) through the redirect.
  */
 export async function GET(req: Request) {
-  const { companyId } = resolveCompanyContext(req);
+  let companyId: string;
+  try {
+    companyId = (await resolveCompanyContext(req)).companyId;
+  } catch {
+    return Response.json({ error: "Sign in required." }, { status: 401 });
+  }
   const returnTo = toGustoReturnPath(new URL(req.url).searchParams.get("returnTo"));
 
   try {

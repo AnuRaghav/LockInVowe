@@ -21,7 +21,10 @@ const stream = vi.hoisted(() => vi.fn(async function* (input: { messages: Array<
 }));
 
 vi.mock("@/lib/agents/sam", () => ({ streamSamAgent: stream }));
-vi.mock("@/lib/company/context", () => ({ resolveCompanyContext: () => ({ companyId: "trusted-company" }) }));
+vi.mock("@/lib/company/context", () => ({
+  UnauthenticatedError: class UnauthenticatedError extends Error {},
+  resolveCompanyContext: async () => ({ companyId: "trusted-company" }),
+}));
 vi.mock("@/lib/conversations/store", () => ({
   ConversationError: class ConversationError extends Error { constructor(message: string, readonly status: number) { super(message); } },
   createConversationStore: () => ({

@@ -1,32 +1,42 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEV_COMPANY_ID, resolveCompanyContext } from "@/lib/company/context";
+const getUser = vi.fn();
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: async () => ({ auth: { getUser } }),
+}));
+
+const { resolveCompanyContext, UnauthenticatedError } = await import("@/lib/company/context");
 
 const request = (headers: Record<string, string> = {}) =>
   new Request("http://localhost/api/chat", { method: "POST", headers });
 
 afterEach(() => {
-  delete process.env.DEV_COMPANY_ID;
+  vi.clearAllMocks();
 });
 
 describe("resolveCompanyContext", () => {
-  it("falls back to the built-in development company", () => {
-    expect(resolveCompanyContext(request())).toEqual({
-      companyId: DEV_COMPANY_ID,
+  it("throws when there is no signed-in founder", async () => {
+    getUser.mockResolvedValue({ data: { user: null } });
+
+    await expect(resolveCompanyContext(request())).rejects.toBeInstanceOf(
+      UnauthenticatedError
+    );
+  });
+
+  it("resolves to the authenticated founder's user id", async () => {
+    getUser.mockResolvedValue({ data: { user: { id: "user_123" } } });
+
+    await expect(resolveCompanyContext(request())).resolves.toEqual({
+      companyId: "user_123",
     });
   });
 
-  it("prefers DEV_COMPANY_ID when set", () => {
-    process.env.DEV_COMPANY_ID = "company_env";
-
-    expect(resolveCompanyContext(request())).toEqual({
-      companyId: "company_env",
-    });
-  });
-
-  it("honours the dev-only override header outside production", () => {
-    expect(
+  it("honours the dev-only override header outside production, without touching auth", async () => {
+    await expect(
       resolveCompanyContext(request({ "x-dev-company-id": "company_header" }))
-    ).toEqual({ companyId: "company_header" });
+    ).resolves.toEqual({ companyId: "company_header" });
+
+    expect(getUser).not.toHaveBeenCalled();
   });
 });
