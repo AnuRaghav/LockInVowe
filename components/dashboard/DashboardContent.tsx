@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChatCircleText } from "@phosphor-icons/react/dist/ssr";
 
 import { InsightCard } from "@/components/dashboard/InsightCard";
+import { NarratedInsight } from "@/components/dashboard/NarratedInsight";
 import { SamLogo } from "@/components/SamLogo";
 import { BlurFade } from "@/components/ui/blur-fade";
 import type { DigestInsight } from "@/lib/insights/types";
@@ -64,7 +65,12 @@ export function DashboardContent({ insights }: { insights: DigestInsight[] }) {
           </p>
         </BlurFade>
 
-        {hero && <InsightCard insight={hero} delay={0} />}
+        {hero && (
+          <>
+            <NarratedInsight text={hero.note} />
+            <InsightCard insight={hero} delay={0} />
+          </>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           {rest.map((insight, i) => (

@@ -27,6 +27,7 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "cash-runway",
     tone: "warning",
+    category: "CASH · RUNWAY",
     title: "Cash is trending down — plan your next raise",
     note: "You've burned through $544k over the past year. At the current pace, that leaves roughly 7 months of runway before you need to raise or cut costs.",
     stat: { value: 356381, label: "Cash on hand today", prefix: "$" },
@@ -45,6 +46,7 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "revenue-rebound",
     tone: "positive",
+    category: "REVENUE · GROWTH",
     title: "Revenue rebounded hard after a rough Q2",
     note: "A key customer churned in March, cutting monthly revenue 30%. Since then, new logo wins have driven revenue up 148% — the fastest growth streak in the company's history.",
     stat: { value: 148, label: "Revenue growth since the March low", suffix: "%" },
@@ -59,6 +61,7 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "burn-trend",
     tone: "warning",
+    category: "BURN · TREND",
     title: "Burn is creeping up faster than revenue can outrun it",
     note: "Cash consumption rose 5.8% quarter over quarter ($282.6k → $298.8k), even as revenue grew. Marketing is the biggest swing factor — worth reviewing before it becomes a trend.",
     stat: { value: 5.8, label: "Quarter-over-quarter increase in cash consumption", suffix: "%" },
@@ -81,6 +84,7 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "marketing-volatility",
     tone: "neutral",
+    category: "MARKETING · SPEND",
     title: "Marketing spend swings wildly month to month",
     note: "The biggest and smallest marketing months differ by 5.7x. Ads spend nearly tripled in November and March with no consistent cadence — a good place to tighten a budget.",
     stat: { value: 5.7, label: "Swing between the biggest and smallest month", suffix: "x" },
@@ -95,6 +99,7 @@ export const getDailyDigest = (): DigestInsight[] => [
   {
     id: "payroll-discipline",
     tone: "positive",
+    category: "PAYROLL · HEADCOUNT",
     title: "Payroll has stayed disciplined — no runaway hiring",
     note: "The team held at 5 people all year, with one retention raise in May. Payroll grew just 2.4% while revenue grew 141% over the same window — the kind of leverage investors want to see.",
     stat: { value: 2.4, label: "Payroll growth for the year", suffix: "%" },
